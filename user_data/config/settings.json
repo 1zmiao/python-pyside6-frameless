@@ -28,10 +28,10 @@
   "windows": {
     "main": {
       "normalGeometry": {
-        "x": 90,
-        "y": 193,
+        "x": 259,
+        "y": 224,
         "w": 1023,
-        "h": 633
+        "h": 590
       }
     },
     "child-about-1": {
