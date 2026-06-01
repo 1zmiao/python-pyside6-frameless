@@ -124,7 +124,7 @@ class NativeFramelessHost(QWidget):
         self._engine = engine
         self._bridge = bridge
         self._qml_dir = Path(qml_dir)
-        self._resize_border = 7
+        self._resize_border = 2
         self._normal_geometry = QRect(160, 90, 1080, 700)
         self._normal_frame_geometry = QRect(self._normal_geometry)
         self._move_state: dict | None = None
@@ -743,7 +743,7 @@ class NativeFramelessHost(QWidget):
                 scale = max(1.0, float(dpi) / 96.0)
             except Exception:
                 scale = 1.0
-            border = max(5, int(round(self._resize_border * scale)))
+            border = max(2, int(round(self._resize_border * scale)))
             inset = self._shadow_inset()
             inset_px = max(0, int(round(float(inset) * scale)))
             visual_left = int(rect.left) + inset_px

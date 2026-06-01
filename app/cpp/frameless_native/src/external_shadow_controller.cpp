@@ -620,7 +620,7 @@ void ExternalShadowController::updateNativeShadowBitmap(NativeShadowState &state
     }
 
     const bool firstVisiblePaint = !state.everShown && !state.shown && !state.inSizeMove && !state.sizing;
-    const qreal opacityScale = firstVisiblePaint ? 0.35 : 1.0;
+    const qreal opacityScale = firstVisiblePaint ? 0.0 : 1.0;
 
     if (forceRepaint || sizeChanged || !state.shown) {
 
@@ -662,7 +662,7 @@ void ExternalShadowController::updateNativeShadowBitmap(NativeShadowState &state
     if (firstVisiblePaint && !state.openingFadeScheduled) {
         state.openingFadeScheduled = true;
         const WId targetId = reinterpret_cast<WId>(target);
-        QTimer::singleShot(90, this, [this, targetId]() {
+        QTimer::singleShot(200, this, [this, targetId]() {
             auto it = m_nativeShadowByTarget.find(targetId);
             if (it == m_nativeShadowByTarget.end())
                 return;

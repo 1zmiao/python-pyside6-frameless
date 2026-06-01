@@ -204,7 +204,7 @@ class _WindowsHitTestFilter(QAbstractNativeEventFilter):
             scale = max(1.0, float(dpi) / 96.0)
         except Exception:
             scale = 1.0
-        border = max(5, int(round(6 * scale)))
+        border = max(2, int(round(2 * scale)))
         inset_left, inset_top, inset_right, inset_bottom = self._controller._shadow_insets(win)
         left_px = max(0, int(round(float(inset_left) * scale)))
         top_px = max(0, int(round(float(inset_top) * scale)))

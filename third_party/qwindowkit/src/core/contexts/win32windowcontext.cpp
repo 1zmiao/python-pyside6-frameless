@@ -367,9 +367,9 @@ namespace QWK {
 
         const int x = static_cast<int>(static_cast<short>(LOWORD(lParam)));
         const int y = static_cast<int>(static_cast<short>(HIWORD(lParam)));
-        int activeInset = ::MulDiv(2, static_cast<int>(getDpiForWindow(hWnd)), 96);
-        if (activeInset < 2) {
-            activeInset = 2;
+        int activeInset = ::MulDiv(1, static_cast<int>(getDpiForWindow(hWnd)), 96);
+        if (activeInset < 1) {
+            activeInset = 1;
         }
 
         const bool rightActive = !containsRight || (x >= windowRect.right - activeInset);
