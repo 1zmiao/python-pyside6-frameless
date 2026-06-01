@@ -1732,7 +1732,7 @@ namespace QWK {
                 // the right/bottom resize hit-test occupy several visible client
                 // pixels. Those edges sit next to scrollbars and controls in this
                 // template, so only the actual visible edge should resize.
-                static constexpr int kRightBottomVisibleEdgeInset = 1;
+                static constexpr int kRightBottomVisibleEdgeInset = 4;
 
                 bool isFixedWidth = isHostWidthFixed();
                 bool isFixedHeight = isHostHeightFixed();
