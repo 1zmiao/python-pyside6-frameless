@@ -5,7 +5,9 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Property, Slot
 from PySide6.QtQml import QQmlApplicationEngine
 
+from .card_glow_provider import CardGlowImageProvider
 from .dialog_service import DialogService
+from .performance_controller import PerformanceController
 from .secret_store import SecretStore
 from .settings_store import SettingsStore
 from .theme_controller import ThemeController
@@ -19,9 +21,16 @@ class AppBridge(QObject):
         self._app = app
         self._settings = SettingsStore()
         self._secrets = SecretStore(password=None)
+        self._performance = PerformanceController(self._settings, parent=self)
         self._theme = ThemeController(self._settings)
+        engine.addImageProvider("cardaccent", CardGlowImageProvider())
         self._window = WindowController(self._settings, native_window_shell=native_window_shell)
-        self._dialogs = DialogService(engine=engine, qml_dir=qml_dir, native_window_shell=native_window_shell)
+        self._dialogs = DialogService(
+            engine=engine,
+            qml_dir=qml_dir,
+            native_window_shell=native_window_shell,
+            performance=self._performance,
+        )
         self._tray = TrayController(app=app, settings=self._settings, theme=self._theme, project_root=qml_dir.parent, parent=self, engine=engine, qml_dir=qml_dir)
         try:
             app.aboutToQuit.connect(self.shutdown)
@@ -35,6 +44,10 @@ class AppBridge(QObject):
     @Property(QObject, constant=True)
     def secrets(self):
         return self._secrets
+
+    @Property(QObject, constant=True)
+    def performance(self):
+        return self._performance
 
     @Property(QObject, constant=True)
     def theme(self):
@@ -75,6 +88,7 @@ class AppBridge(QObject):
     def copyToClipboard(self, text: str) -> None:
         clipboard = self._app.clipboard()
         clipboard.setText(str(text))
+
     @Slot(str)
     def copyText(self, text: str) -> None:
         clipboard = self._app.clipboard()

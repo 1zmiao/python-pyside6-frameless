@@ -19,6 +19,7 @@ Item {
             border.color: Core.Theme.color.outlineAccent
 
             BackgroundRipple { radius: parent.radius }
+            CardAccentGlow { radius: parent.radius }
 
             Column {
                 id: heroContent
@@ -31,13 +32,14 @@ Item {
                     text: "关于这个框架"
                     color: Core.Theme.color.text
                     font.pixelSize: Core.Theme.sp(24)
-                    font.bold: true
+                    font.family: Core.Theme.headingFontFamily; font.weight: Core.Theme.headingFontWeight; font.letterSpacing: Core.Theme.headingLetterSpacing
                 }
                 Text {
                     width: parent.width
                     text: "一个面向后续桌面软件复用的 PySide6 + QML 无边框窗口模板。窗口壳、页面、主题、配置、密文存储、托盘和控件都按模块拆分，可以直接作为新项目的基础工程。"
                     color: Core.Theme.color.mutedText
                     font.pixelSize: Core.Theme.fontSize.body
+                    font.family: Core.Theme.appFontFamily
                     wrapMode: Text.WordWrap
                 }
             }
@@ -51,6 +53,7 @@ Item {
             border.color: Core.Theme.color.outlineAccent
 
             BackgroundRipple { radius: parent.radius }
+            CardAccentGlow { radius: parent.radius }
 
             Column {
                 id: behaviorContent
@@ -59,7 +62,7 @@ Item {
                 anchors.margins: root.cardPadding
                 spacing: 9
 
-                Text { text: "窗口行为"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.sp(18); font.bold: true }
+                Text { text: "窗口行为"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.sp(18); font.family: Core.Theme.headingFontFamily; font.weight: Core.Theme.headingFontWeight; font.letterSpacing: Core.Theme.headingLetterSpacing }
                 Text {
                     width: parent.width
                     color: Core.Theme.color.mutedText
@@ -71,6 +74,7 @@ Item {
                     width: parent.width
                     color: Core.Theme.color.mutedText
                     font.pixelSize: Core.Theme.fontSize.body
+                    font.family: Core.Theme.appFontFamily
                     wrapMode: Text.WordWrap
                     text: "最大化、双击标题栏、顶部贴边、左右贴边之后再拖拽标题栏，Windows 会走原生 HTCAPTION 行为复原并跟随鼠标移动，因此半透明贴边预览、Aero Snap 和 Snap Assist 都由系统触发；QML 贴边预览保留给 Linux 和原生链路不可用时的兜底路径。"
                 }
@@ -85,6 +89,7 @@ Item {
             border.color: Core.Theme.color.outlineAccent
 
             BackgroundRipple { radius: parent.radius }
+            CardAccentGlow { radius: parent.radius }
 
             Column {
                 id: advantageContent
@@ -93,7 +98,7 @@ Item {
                 anchors.margins: root.cardPadding
                 spacing: 9
 
-                Text { text: "软件优点"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.sp(18); font.bold: true }
+                Text { text: "软件优点"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.sp(18); font.family: Core.Theme.headingFontFamily; font.weight: Core.Theme.headingFontWeight; font.letterSpacing: Core.Theme.headingLetterSpacing }
                 Text {
                     width: parent.width
                     color: Core.Theme.color.mutedText
@@ -112,6 +117,7 @@ Item {
             border.color: Core.Theme.color.outlineAccent
 
             BackgroundRipple { radius: parent.radius }
+            CardAccentGlow { radius: parent.radius }
 
             Column {
                 id: interfaceContent
@@ -120,7 +126,7 @@ Item {
                 anchors.margins: root.cardPadding
                 spacing: 9
 
-                Text { text: "可复用接口"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.sp(18); font.bold: true }
+                Text { text: "可复用接口"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.sp(18); font.family: Core.Theme.headingFontFamily; font.weight: Core.Theme.headingFontWeight; font.letterSpacing: Core.Theme.headingLetterSpacing }
                 Text {
                     width: parent.width
                     color: Core.Theme.color.mutedText
@@ -132,6 +138,7 @@ Item {
                     width: parent.width
                     color: Core.Theme.color.mutedText
                     font.pixelSize: Core.Theme.fontSize.body
+                    font.family: Core.Theme.appFontFamily
                     wrapMode: Text.WordWrap
                     text: "App.window 负责子窗口 restoreWindowState、saveWindowState、toggleMaximized、beginMove、updateMove、endMove、beginResize、endResize；App.dialogs.openChild 可打开独立页面子窗口；App.tray 负责最小化到托盘、居中恢复和退出。"
                 }
@@ -139,6 +146,7 @@ Item {
                     width: parent.width
                     color: Core.Theme.color.mutedText
                     font.pixelSize: Core.Theme.fontSize.body
+                    font.family: Core.Theme.appFontFamily
                     wrapMode: Text.WordWrap
                     text: "Windows 主窗口使用 NativeHost.toggleMaximized、setAlwaysOnTop、showToast、changeThemeWithRipple、setTitleBarHitTestMetrics；beginSystemMove、updateSystemMove、endSystemMove 保留为非原生链路兜底。普通输入框可直接设置 storageKey；敏感输入使用 SecureTextField 或 StorageBinding { encrypted: true }。"
                 }
@@ -153,6 +161,7 @@ Item {
             border.color: Core.Theme.color.outlineAccent
 
             BackgroundRipple { radius: parent.radius }
+            CardAccentGlow { radius: parent.radius }
 
             Column {
                 id: extensionContent
@@ -161,7 +170,7 @@ Item {
                 anchors.margins: root.cardPadding
                 spacing: 9
 
-                Text { text: "扩展入口"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.sp(18); font.bold: true }
+                Text { text: "扩展入口"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.sp(18); font.family: Core.Theme.headingFontFamily; font.weight: Core.Theme.headingFontWeight; font.letterSpacing: Core.Theme.headingLetterSpacing }
                 Text {
                     width: parent.width
                     color: Core.Theme.color.mutedText

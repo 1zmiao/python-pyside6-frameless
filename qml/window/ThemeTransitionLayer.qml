@@ -27,6 +27,7 @@ Item {
     }
 
     function playFrom(x, y, nextMode, fromColor) {
+
         _cx = x
         _cy = y
         baseColor = fromColor

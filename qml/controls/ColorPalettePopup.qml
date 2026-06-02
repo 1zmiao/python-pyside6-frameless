@@ -48,7 +48,9 @@ Popup {
             text: "主题色"
             color: Core.Theme.color.text
             font.pixelSize: Core.Theme.sp(14)
-            font.bold: true
+            font.family: Core.Theme.headingFontFamily
+            font.weight: Core.Theme.headingFontWeight
+            font.letterSpacing: Core.Theme.headingLetterSpacing
         }
 
         Text {

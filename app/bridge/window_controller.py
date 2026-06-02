@@ -1428,14 +1428,12 @@ class WindowController(QObject):
         flags = win.flags()
         if sys.platform == "win32" and self._is_valid_window(win):
             try:
-                user32 = ctypes.windll.user32
-                HWND_TOPMOST = -1
-                HWND_NOTOPMOST = -2
-                SWP_NOMOVE = 0x0002
-                SWP_NOSIZE = 0x0001
-                SWP_NOACTIVATE = 0x0010
-                SWP_NOOWNERZORDER = 0x0200
-                user32.SetWindowPos(wintypes.HWND(int(win.winId())), HWND_TOPMOST if enabled else HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER)
+                hwnd_value = int(win.winId())
+                self._apply_hwnd_topmost(hwnd_value, enabled, activate=enabled)
+                QTimer.singleShot(0, lambda hwnd_value=hwnd_value, enabled=enabled: self._apply_hwnd_topmost(hwnd_value, enabled, activate=False))
+                QTimer.singleShot(80, lambda hwnd_value=hwnd_value, enabled=enabled: self._apply_hwnd_topmost(hwnd_value, enabled, activate=False))
+                QTimer.singleShot(180, lambda hwnd_value=hwnd_value, enabled=enabled: self._apply_hwnd_topmost(hwnd_value, enabled, activate=False))
+                QTimer.singleShot(90, lambda hwnd_value=hwnd_value: self._sync_registered_shadow_for_target_hwnd(hwnd_value))
             except Exception:
                 pass
         else:
@@ -2506,6 +2504,29 @@ class WindowController(QObject):
                     and abs(int(geom.height()) - int(target.height())) <= tolerance)
         except Exception:
             return False
+
+    def _apply_hwnd_topmost(self, hwnd: int, enabled: bool, activate: bool = False) -> None:
+        if sys.platform != "win32" or not hwnd:
+            return
+        try:
+            user32 = ctypes.windll.user32
+            hwnd_p = wintypes.HWND(int(hwnd))
+            if not user32.IsWindow(hwnd_p):
+                return
+            HWND_TOPMOST = -1
+            HWND_NOTOPMOST = -2
+            flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER
+            if not (enabled and activate):
+                flags |= SWP_NOACTIVATE
+            user32.SetWindowPos(hwnd_p, wintypes.HWND(HWND_TOPMOST if enabled else HWND_NOTOPMOST), 0, 0, 0, 0, flags)
+            if enabled and activate:
+                try:
+                    user32.BringWindowToTop(hwnd_p)
+                except Exception:
+                    pass
+            self._sync_registered_shadow_for_target_hwnd(int(hwnd))
+        except Exception:
+            pass
 
     def _raise_window(self, win: QWindow) -> None:
         for name in ("raise_", "raise"):

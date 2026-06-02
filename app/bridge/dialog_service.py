@@ -2,18 +2,19 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import QObject, QUrl, Slot
-from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent, QQmlEngine
+from PySide6.QtCore import QObject, QTimer, QUrl, Slot
+from PySide6.QtQml import QQmlApplicationEngine, QQmlEngine
 
 from .util import to_python
 
 
 class DialogService(QObject):
-    def __init__(self, engine: QQmlApplicationEngine, qml_dir: Path, parent=None, native_window_shell: bool = False):
+    def __init__(self, engine: QQmlApplicationEngine, qml_dir: Path, parent=None, native_window_shell: bool = False, performance=None):
         super().__init__(parent)
         self._engine = engine
         self._qml_dir = qml_dir
         self._native_window_shell = bool(native_window_shell)
+        self._performance = performance
         self._windows: dict[int, QObject] = {}
         self._page_windows: dict[str, QObject] = {}
         self._titles = {
@@ -71,6 +72,12 @@ class DialogService(QObject):
         self._windows[obj_id] = obj
         self._page_windows[page_key] = obj
         obj.destroyed.connect(lambda *_args, obj_id=obj_id, page_key=page_key: (self._windows.pop(obj_id, None), self._page_windows.pop(page_key, None)))
+        try:
+            obj.windowEvent.connect(
+                lambda event_type, _payload, obj=obj, obj_id=obj_id, page_key=page_key: self._handle_window_event(obj_id, page_key, obj, event_type)
+            )
+        except Exception:
+            pass
 
         try:
             # Apply geometry and persisted state before the first show so the
@@ -86,12 +93,15 @@ class DialogService(QObject):
     def set_native_window_shell(self, enabled: bool) -> None:
         self._native_window_shell = bool(enabled)
 
-
     @Slot()
     def closeAll(self) -> None:
         for obj in list(self._windows.values()):
             try:
                 obj.close()
+            except Exception:
+                pass
+            try:
+                obj.deleteLater()
             except Exception:
                 pass
         self._windows.clear()
@@ -107,3 +117,18 @@ class DialogService(QObject):
         }
         filename = mapping.get(page_key, "AboutPage.qml")
         return QUrl.fromLocalFile(str(self._qml_dir / "pages" / filename)).toString()
+
+    def _handle_window_event(self, obj_id: int, page_key: str, obj: QObject, event_type: str) -> None:
+        if str(event_type) != "closing":
+            return
+        if not self._low_memory_mode():
+            return
+        self._windows.pop(obj_id, None)
+        self._page_windows.pop(page_key, None)
+        QTimer.singleShot(0, obj.deleteLater)
+
+    def _low_memory_mode(self) -> bool:
+        try:
+            return bool(self._performance and self._performance.lowMemoryMode)
+        except Exception:
+            return False

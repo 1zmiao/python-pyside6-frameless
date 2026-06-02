@@ -205,6 +205,17 @@ Item {
             }
         }
 
+        Rectangle {
+            id: windowEdgeOverlay
+            anchors.fill: parent
+            z: 90
+            radius: root.cornerRadius
+            color: "transparent"
+            border.color: root.cornerRadius > 0 ? Core.Theme.color.windowEdge : "transparent"
+            border.width: root.cornerRadius > 0 ? 1 : 0
+            antialiasing: true
+        }
+
         ListModel { id: toastModel }
         Repeater {
             model: toastModel

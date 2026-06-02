@@ -171,6 +171,7 @@ Item {
                 text: root.windowTitle.length > 0 ? root.windowTitle : Core.AppInfo.windowTitle
                 color: Core.Theme.color.text
                 font.pixelSize: Core.Theme.fontSize.caption
+                font.family: Core.Theme.appFontFamily
                 font.bold: false
                 font.weight: Font.Light
                 elide: Text.ElideRight
@@ -261,7 +262,7 @@ Item {
                 const host = paletteContextMenu.parent
                 const p = paletteButton.mapToItem(host, localX, localY)
                 paletteContextMenu.openForActions([
-                    { "text": "闅愯棌璋冭壊鎸夐挳", "action": "hidePalette", "available": true }
+                    { "text": "隐藏调色按钮", "action": "hidePalette", "available": true }
                 ], p.x, p.y)
             }
         }

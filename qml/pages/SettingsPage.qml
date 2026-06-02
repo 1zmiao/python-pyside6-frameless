@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 import QtQuick.Controls
 import "../core" as Core
 import "../controls"
@@ -11,6 +11,18 @@ Item {
     function settingsPath() { return appReady && App.settings ? App.settings.path() : "" }
     function trayIconPath() { return appReady && App.tray ? App.tray.iconPath : "resources/tray_icon.png" }
     function trayDefaultIconPath() { return appReady && App.tray ? App.tray.defaultIconPath() : "resources/tray_icon.png" }
+    function performanceProfile() { return appReady && App.performance ? App.performance.resourceProfile : "auto" }
+    function effectiveProfile() { return appReady && App.performance ? App.performance.effectiveProfile : "normal" }
+    function profileIndex(profile) {
+        if (profile === "normal") return 1
+        if (profile === "low-memory") return 2
+        return 0
+    }
+    function profileFromIndex(index) {
+        if (index === 1) return "normal"
+        if (index === 2) return "low-memory"
+        return "auto"
+    }
     function toastHost() {
         var w = root.Window.window
         if (w && w.showToast)
@@ -19,9 +31,15 @@ Item {
             return NativeHost
         return null
     }
+    function showToast(message) {
+        const host = root.toastHost()
+        if (host && host.showToast)
+            host.showToast(message)
+    }
 
     DragScrollArea {
         anchors.fill: parent
+        spacing: Core.Theme.dp(16)
 
         Rectangle {
             width: parent.width
@@ -33,6 +51,7 @@ Item {
             Behavior on color { ColorAnimation { duration: 150 } }
 
             BackgroundRipple { radius: parent.radius }
+            CardAccentGlow { radius: parent.radius }
 
             Column {
                 id: settingsColumn
@@ -41,7 +60,7 @@ Item {
                 anchors.margins: Core.Theme.dp(18)
                 spacing: Core.Theme.dp(12)
 
-                Text { text: "设置"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.fontSize.title; font.bold: true }
+                Text { text: "设置"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.fontSize.title; font.family: Core.Theme.headingFontFamily; font.weight: Core.Theme.headingFontWeight; font.letterSpacing: Core.Theme.headingLetterSpacing }
                 Text { width: parent.width; text: "这些设置会保存在软件根目录下的本地 JSON 配置文件中。"; color: Core.Theme.color.mutedText; font.pixelSize: Core.Theme.fontSize.body; wrapMode: Text.WordWrap }
                 Text { width: parent.width; text: root.settingsPath(); color: Core.Theme.color.mutedText; font.pixelSize: Core.Theme.fontSize.caption; elide: Text.ElideRight }
 
@@ -95,21 +114,8 @@ Item {
                             implicitHeight: Core.Theme.dp(18)
                             width: fontSlider.availableWidth
                             height: implicitHeight
-
-                            Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: parent.width
-                                height: Core.Theme.dp(4)
-                                radius: 2
-                                color: Core.Theme.primarySoft
-                            }
-                            Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: fontSlider.visualPosition * parent.width
-                                height: Core.Theme.dp(4)
-                                radius: 2
-                                color: Core.Theme.primary
-                            }
+                            Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width; height: Core.Theme.dp(4); radius: 2; color: Core.Theme.primarySoft }
+                            Rectangle { anchors.verticalCenter: parent.verticalCenter; width: fontSlider.visualPosition * parent.width; height: Core.Theme.dp(4); radius: 2; color: Core.Theme.primary }
                             Repeater {
                                 model: 10
                                 delegate: Rectangle {
@@ -134,25 +140,11 @@ Item {
                             border.width: 2
                         }
                     }
-                    Connections {
-                        target: root.appReady && App.theme ? App.theme : null
-                        function onFontScaleChanged(scale) {
-                            fontSlider.value = Math.round(scale * 100 / fontSlider.stepSize) * fontSlider.stepSize
-                        }
-                    }
+                    Connections { target: root.appReady && App.theme ? App.theme : null; function onFontScaleChanged(scale) { fontSlider.value = Math.round(scale * 100 / fontSlider.stepSize) * fontSlider.stepSize } }
                     Row {
                         width: parent.width
                         spacing: 0
-                        Repeater {
-                            model: ["85", "90", "95", "100", "105", "110", "115", "120", "125", "130"]
-                            delegate: Text {
-                                width: parent.width / 10
-                                text: modelData
-                                color: Core.Theme.color.mutedText
-                                font.pixelSize: Core.Theme.fontSize.caption
-                                horizontalAlignment: Text.AlignHCenter
-                            }
-                        }
+                        Repeater { model: ["85", "90", "95", "100", "105", "110", "115", "120", "125", "130"]; delegate: Text { width: parent.width / 10; text: modelData; color: Core.Theme.color.mutedText; font.pixelSize: Core.Theme.fontSize.caption; horizontalAlignment: Text.AlignHCenter } }
                     }
                 }
 
@@ -166,6 +158,7 @@ Item {
 
                 AppTextField { id: trayIconPathInput; width: parent.width; placeholderText: "自定义托盘图标路径，可留空"; storageKey: "tray/iconPath"; autoLoad: true; onSaved: if (root.appReady && App.tray) App.tray.setIconPath(text) }
                 AppTextField { id: projectPathInput; width: parent.width; placeholderText: "默认项目路径"; storageKey: "paths/defaultProject"; autoLoad: true }
+
                 Row {
                     spacing: Core.Theme.dp(8)
                     AppButton {
@@ -177,9 +170,7 @@ Item {
                             App.settings.setValue("tray/iconPath", trayIconPathInput.text)
                             if (App.tray)
                                 App.tray.setIconPath(trayIconPathInput.text)
-                            const host = root.toastHost()
-                            if (host && host.showToast)
-                                host.showToast("设置已保存")
+                            root.showToast("设置已保存")
                         }
                     }
                     AppButton {
@@ -198,6 +189,178 @@ Item {
                 }
             }
         }
+
+        Rectangle {
+            width: parent.width
+            height: developerColumn.implicitHeight + Core.Theme.dp(36)
+            radius: Core.Theme.radius.card
+            color: Core.Theme.color.card
+            border.color: Core.Theme.color.outlineAccent
+            antialiasing: true
+            Behavior on color { ColorAnimation { duration: 150 } }
+
+            BackgroundRipple { radius: parent.radius }
+            CardAccentGlow { radius: parent.radius }
+
+            Column {
+                id: developerColumn
+                z: 1
+                anchors.fill: parent
+                anchors.margins: Core.Theme.dp(18)
+                spacing: Core.Theme.dp(12)
+
+                Text { text: "开发者选项"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.fontSize.subtitle; font.family: Core.Theme.headingFontFamily; font.weight: Core.Theme.headingFontWeight; font.letterSpacing: Core.Theme.headingLetterSpacing }
+
+                Text {
+                    width: parent.width
+                    visible: root.appReady && App.performance && App.performance.developerKeyPresent
+                    text: "已检测到本机 developer.key，开发者选项已自动展开。路径：" + (root.appReady && App.performance ? App.performance.developerKeyPath : "")
+                    color: Core.Theme.color.mutedText
+                    font.pixelSize: Core.Theme.fontSize.caption
+                    font.family: Core.Theme.appFontFamily
+                    wrapMode: Text.WordWrap
+                }
+                Text {
+                    width: parent.width
+                    visible: root.appReady && App.performance && App.performance.developerUnlocked && !App.performance.developerKeyPresent
+                    text: "已通过维护口令开启开发者选项。"
+                    color: Core.Theme.color.mutedText
+                    font.pixelSize: Core.Theme.fontSize.caption
+                    font.family: Core.Theme.appFontFamily
+                    wrapMode: Text.WordWrap
+                }
+
+                Row {
+                    width: parent.width
+                    height: Core.Theme.metrics.fieldHeight
+                    spacing: Core.Theme.dp(8)
+                    visible: !(root.appReady && App.performance && App.performance.developerUnlocked)
+                    AppTextField { id: developerPasswordInput; width: Math.min(Core.Theme.dp(260), parent.width - unlockButton.width - Core.Theme.dp(8)); height: parent.height; placeholderText: "维护口令"; encrypted: true; revealed: false; autoSave: false }
+                    AppButton {
+                        id: unlockButton
+                        anchors.verticalCenter: parent.verticalCenter
+                        height: parent.height
+                        variant: "soft"
+                        text: "开启"
+                        minButtonWidth: Core.Theme.dp(82)
+                        onClicked: {
+                            if (!root.appReady || !App.performance)
+                                return
+                            if (App.performance.unlockDeveloperMode(developerPasswordInput.text))
+                                root.showToast("开发者选项已开启")
+                            else
+                                root.showToast("口令不正确")
+                        }
+                    }
+                }
+
+                Column {
+                    width: parent.width
+                    spacing: Core.Theme.dp(8)
+                    visible: root.appReady && App.performance && App.performance.developerUnlocked
+
+                    Row {
+                        width: parent.width
+                        spacing: Core.Theme.dp(10)
+                        Text { text: "资源档位"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.fontSize.body; width: Core.Theme.dp(86); anchors.verticalCenter: parent.verticalCenter }
+                        ComboBox {
+                            id: profileCombo
+                            property int rowHeight: Core.Theme.dp(34)
+                            width: Math.min(Core.Theme.dp(230), parent.width - Core.Theme.dp(96))
+                            height: Core.Theme.metrics.controlHeight
+                            model: ["自动", "普通模式", "低内存模拟"]
+                            currentIndex: root.profileIndex(root.performanceProfile())
+                            onActivated: function(index) {
+                                if (root.appReady && App.performance)
+                                    App.performance.setResourceProfile(root.profileFromIndex(index))
+                            }
+                            contentItem: Text {
+                                leftPadding: Core.Theme.dp(12)
+                                rightPadding: Core.Theme.dp(32)
+                                text: profileCombo.displayText
+                                color: Core.Theme.color.text
+                                font.pixelSize: Core.Theme.fontSize.control
+                                font.family: Core.Theme.appFontFamily
+                                verticalAlignment: Text.AlignVCenter
+                                elide: Text.ElideRight
+                            }
+                            indicator: Text {
+                                text: "▼"
+                                color: Core.Theme.color.mutedText
+                                font.pixelSize: Core.Theme.fontSize.tiny
+                                font.family: Core.Theme.appFontFamily
+                                anchors.right: parent.right
+                                anchors.rightMargin: Core.Theme.dp(10)
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            background: Rectangle {
+                                radius: Core.Theme.radius.button
+                                color: profileCombo.pressed ? Core.Theme.color.controlPressed : (profileCombo.hovered ? Core.Theme.color.controlHover : Core.Theme.color.field)
+                                border.color: profileCombo.activeFocus ? Core.Theme.color.fieldFocusBorder : Core.Theme.color.outline
+                                border.width: 1
+                            }
+                            delegate: ItemDelegate {
+                                width: profileCombo.width
+                                height: profileCombo.rowHeight
+                                highlighted: profileCombo.highlightedIndex === index
+                                contentItem: Text {
+                                    text: modelData
+                                    color: highlighted ? Core.Theme.color.navSelectedText : Core.Theme.color.text
+                                    font.pixelSize: Core.Theme.fontSize.control
+                                    font.family: Core.Theme.appFontFamily
+                                    verticalAlignment: Text.AlignVCenter
+                                    leftPadding: Core.Theme.dp(10)
+                                    elide: Text.ElideRight
+                                }
+                                background: Rectangle {
+                                    radius: Core.Theme.radius.button
+                                    color: highlighted ? Core.Theme.color.navActive : (hovered ? Core.Theme.color.controlHover : "transparent")
+                                }
+                            }
+                            popup: Popup {
+                                y: profileCombo.height + Core.Theme.dp(4)
+                                width: profileCombo.width
+                                padding: Core.Theme.dp(4)
+                                implicitHeight: contentItem.implicitHeight + padding * 2
+                                background: Rectangle {
+                                    radius: Core.Theme.radius.popup
+                                    color: Core.Theme.color.card
+                                    border.color: Core.Theme.color.outlineAccent
+                                    border.width: 1
+                                }
+                                contentItem: ListView {
+                                    clip: true
+                                    implicitHeight: Math.min(contentHeight, profileCombo.rowHeight * 3)
+                                    model: profileCombo.popup.visible ? profileCombo.delegateModel : null
+                                    currentIndex: profileCombo.highlightedIndex
+                                }
+                            }
+                        }
+                    }
+
+                    Text {
+                        width: parent.width
+                        text: "当前生效：" + (root.effectiveProfile() === "low-memory" ? "低内存" : "普通") + "。自动模式只在 1-2G 级别内存设备上进入低内存策略；这台电脑可用“低内存模拟”强制测试。"
+                        color: Core.Theme.color.mutedText
+                        font.pixelSize: Core.Theme.fontSize.caption
+                        font.family: Core.Theme.appFontFamily
+                        wrapMode: Text.WordWrap
+                    }
+                    Text {
+                        width: parent.width
+                        text: "切换后会立即影响关闭后的子窗口释放和后续轻量策略；已打开窗口不会热重建窗口壳、hit-test 或阴影 helper。重新打开子窗口后完整生效。"
+                        color: Core.Theme.color.mutedText
+                        font.pixelSize: Core.Theme.fontSize.caption
+                        font.family: Core.Theme.appFontFamily
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Connections {
+                        target: root.appReady && App.performance ? App.performance : null
+                        function onResourceProfileChanged(profile) { profileCombo.currentIndex = root.profileIndex(profile) }
+                    }
+                }
+            }
+        }
     }
 }
-

@@ -1,4 +1,4 @@
-import QtQuick
+﻿import QtQuick
 import "../core" as Core
 import "../controls"
 
@@ -54,26 +54,9 @@ Item {
         visible: root.width > 0
         clip: true
 
-        Rectangle {
-            anchors.fill: parent
-            radius: root.cornerRadius
-            antialiasing: true
-            color: Core.Theme.color.sidebar
-        }
-        Rectangle {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.top: parent.top
-            height: root.cornerRadius + 2
-            color: Core.Theme.color.sidebar
-        }
-        Rectangle {
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            anchors.right: parent.right
-            width: root.cornerRadius + 2
-            color: Core.Theme.color.sidebar
-        }
+        Rectangle { anchors.fill: parent; radius: root.cornerRadius; antialiasing: true; color: Core.Theme.color.sidebar }
+        Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; height: root.cornerRadius + 2; color: Core.Theme.color.sidebar }
+        Rectangle { anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: parent.right; width: root.cornerRadius + 2; color: Core.Theme.color.sidebar }
     }
 
     Column {
@@ -112,12 +95,7 @@ Item {
         height: root.width > 0 ? Core.Theme.metrics.navItemHeight : 0
         visible: root.width > 0
 
-        NavItem {
-            anchors.fill: parent
-            page: "settings"
-            label: "设置"
-            iconName: "settings"
-        }
+        NavItem { anchors.fill: parent; page: "settings"; label: "设置"; iconName: "settings" }
     }
 
     Rectangle {
@@ -137,17 +115,10 @@ Item {
                 else
                     root.persistWidthLater()
             }
-            onTranslationChanged: {
-                if (active)
-                    root.applyWidth(root.startWidth + translation.x)
-            }
+            onTranslationChanged: if (active) root.applyWidth(root.startWidth + translation.x)
         }
 
-        MouseArea {
-            anchors.fill: parent
-            cursorShape: Qt.SplitHCursor
-            acceptedButtons: Qt.NoButton
-        }
+        MouseArea { anchors.fill: parent; cursorShape: Qt.SplitHCursor; acceptedButtons: Qt.NoButton }
     }
 
     component NavItem: Item {
@@ -180,9 +151,9 @@ Item {
         }
 
         IconImage {
-            x: item.compact ? Math.round((parent.width - width) / 2) : Core.Theme.dp(11)
+            x: item.compact ? Math.round((parent.width - width) / 2) : Core.Theme.dp(10)
             anchors.verticalCenter: parent.verticalCenter
-            width: Core.Theme.dp(15)
+            width: Core.Theme.dp(18)
             height: width
             iconName: item.iconName
             iconColor: item.selected ? Core.Theme.color.navSelectedIcon : Core.Theme.color.icon
@@ -190,22 +161,18 @@ Item {
         }
         Text {
             anchors.left: parent.left
-            anchors.leftMargin: Core.Theme.dp(34)
+            anchors.leftMargin: Core.Theme.dp(36)
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             text: item.label
             visible: !item.compact
             color: item.selected ? Core.Theme.color.navSelectedText : Core.Theme.color.text
             font.pixelSize: Core.Theme.fontSize.control
+            font.family: Core.Theme.appFontFamily
             font.bold: item.selected
             elide: Text.ElideRight
         }
 
-        MouseArea {
-            id: mouse
-            anchors.fill: parent
-            hoverEnabled: true
-            onClicked: root.currentPage = item.page
-        }
+        MouseArea { id: mouse; anchors.fill: parent; hoverEnabled: true; onClicked: root.currentPage = item.page }
     }
 }

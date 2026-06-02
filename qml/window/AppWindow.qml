@@ -18,6 +18,7 @@ Window {
     property bool alwaysOnTop: false
     property bool showNavToggle: true
     property bool showColorButton: Core.Theme.showColorButton
+    property bool lowMemoryVisuals: Core.Theme.lowMemoryMode && root.windowKey !== "main"
     property bool autoRestoreWindowState: true
     property bool autoShow: true
     property bool snappedVisual: false
@@ -189,7 +190,8 @@ Window {
         root._localThemeAnimation = true
         if (root.bridge.theme.setRippleOrigin)
             root.bridge.theme.setRippleOrigin(cx, cy)
-        transitionLayer.play(cx, cy, nextMode)
+        if (!root.lowMemoryVisuals)
+            transitionLayer.play(cx, cy, nextMode)
         root.bridge.theme.setMode(nextMode)
         root.requestThemeToggle(Qt.point(cx, cy), nextMode)
     }
@@ -295,6 +297,17 @@ Window {
                 height: parent.height - titleBarControl.height
                 clip: true
             }
+        }
+
+        Rectangle {
+            id: windowEdgeOverlay
+            anchors.fill: parent
+            z: 90
+            radius: root.cornerRadius
+            color: "transparent"
+            border.color: root.cornerRadius > 0 ? Core.Theme.color.windowEdge : "transparent"
+            border.width: root.cornerRadius > 0 ? 1 : 0
+            antialiasing: true
         }
 
         ListModel { id: toastModel }
@@ -403,6 +416,15 @@ Window {
         root.syncExternalShadow()
     }
     onCustomShadowEnabledChanged: root.syncExternalShadow()
+    onAlwaysOnTopChanged: {
+        if (root.nativeExternalShadow) {
+            root.syncExternalShadow()
+            if (root.customShadowEnabled)
+                externalShadow.syncNativeShadow(root)
+        } else if (root.qmlExternalShadow) {
+            customShadow.forceStackSync(3)
+        }
+    }
     onEffectiveShadowPolicyChanged: {
         nativeAgent.setCustomShadowEnabled(root.customExternalShadow)
         root.syncExternalShadow()

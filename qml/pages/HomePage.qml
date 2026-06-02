@@ -6,7 +6,6 @@ Item {
     id: root
 
     property bool appReady: typeof App !== "undefined" && App !== null
-    function settingValue(key, fallback) { return appReady && App.settings ? App.settings.valueOr(key, fallback) : fallback }
     function configPath() { return appReady && App.settings ? App.settings.path() : "" }
     function secretFile() { return appReady && App.secrets ? App.secrets.vaultFile : "" }
     function toastHost() {
@@ -22,53 +21,85 @@ Item {
         id: demoDialog
         parent: root.Window.window ? root.Window.window.contentItem : root
         dialogTitle: "确认操作"
-        message: "这是一个普通确认弹窗，不继承无边框窗口行为。它使用与主界面一致的主题、圆角、按钮和文字颜色。"
+        message: "这是一个跟随主题、圆角和按钮样式的轻量确认弹窗，不单独创建顶层窗口。"
         onConfirmed: storageText.text = "弹窗确认时间：" + new Date().toString()
     }
 
     DragScrollArea {
         anchors.fill: parent
-        spacing: 16
+        spacing: Core.Theme.dp(16)
 
         Rectangle {
             width: parent.width
-            height: 156
+            height: Math.max(Core.Theme.dp(164), heroContent.implicitHeight + Core.Theme.dp(36))
             radius: Core.Theme.radius.card
             color: Core.Theme.color.hero
             border.color: Core.Theme.color.outlineAccent
             Behavior on color { ColorAnimation { duration: 150 } }
 
             BackgroundRipple { radius: parent.radius }
+            CardAccentGlow { radius: parent.radius }
 
             Column {
+                id: heroContent
                 z: 1
                 anchors.fill: parent
-                anchors.margins: 18
-                spacing: 8
-                Text { text: "无边框窗口模板"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.sp(24); font.bold: true }
-                Text { width: parent.width; text: "这个基础模板演示可复用 QML 窗口、标题栏、页面懒加载、主题切换、普通配置和加密配置接口。"; wrapMode: Text.WordWrap; color: Core.Theme.color.mutedText; font.pixelSize: Core.Theme.fontSize.body }
-                Text { text: "明文配置文件：" + root.configPath(); color: Core.Theme.color.mutedText; font.pixelSize: Core.Theme.sp(12); elide: Text.ElideRight; width: parent.width }
-                Text { text: "密文配置文件：" + root.secretFile(); color: Core.Theme.color.mutedText; font.pixelSize: Core.Theme.sp(12); elide: Text.ElideRight; width: parent.width }
+                anchors.margins: Core.Theme.dp(18)
+                spacing: Core.Theme.dp(8)
+                Text {
+                    text: "跨平台圆角窗口引擎"
+                    color: Core.Theme.color.text
+                    font.pixelSize: Core.Theme.sp(24)
+                    font.family: Core.Theme.headingFontFamily
+                    font.weight: Core.Theme.headingFontWeight
+                    font.letterSpacing: Core.Theme.headingLetterSpacing
+                }
+                Text {
+                    width: parent.width
+                    text: "PySide6/QML 负责界面美观，C++/QWindowKit 接管无边框拖拽、缩放、贴边和最大化。Windows 与 Linux 尽量保留原生窗口手感，同时保证四个角统一圆角。"
+                    wrapMode: Text.WordWrap
+                    color: Core.Theme.color.mutedText
+                    font.pixelSize: Core.Theme.fontSize.body
+                    font.family: Core.Theme.appFontFamily
+                }
+                Text {
+                    width: parent.width
+                    text: "Win11 优先使用系统圆角与阴影；Win10、虚拟机和非完整圆角桌面使用外置自定义阴影，避免阴影像素影响真实窗口尺寸。"
+                    wrapMode: Text.WordWrap
+                    color: Core.Theme.color.mutedText
+                    font.pixelSize: Core.Theme.fontSize.caption
+                    font.family: Core.Theme.appFontFamily
+                }
             }
         }
 
         Rectangle {
             width: parent.width
-            height: 292
+            height: Math.max(Core.Theme.dp(292), storageContent.implicitHeight + Core.Theme.dp(36))
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
             border.color: Core.Theme.color.outlineAccent
             Behavior on color { ColorAnimation { duration: 150 } }
 
             BackgroundRipple { radius: parent.radius }
+            CardAccentGlow { radius: parent.radius }
 
             Column {
+                id: storageContent
                 z: 1
                 anchors.fill: parent
-                anchors.margins: 18
-                spacing: 10
-                Text { text: "存储接口演示"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.sp(18); font.bold: true }
-                Text { id: storageText; width: parent.width; color: Core.Theme.color.mutedText; font.pixelSize: Core.Theme.fontSize.body; wrapMode: Text.WordWrap; text: "同一个保存按钮会同时保存普通字段和加密字段。普通字段进入 user_data/config/settings.json，加密字段进入 user_data/secure/secrets.bin。" }
+                anchors.margins: Core.Theme.dp(18)
+                spacing: Core.Theme.dp(10)
+                Text { text: "明文与密文存储"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.sp(18); font.family: Core.Theme.headingFontFamily; font.weight: Core.Theme.headingFontWeight; font.letterSpacing: Core.Theme.headingLetterSpacing }
+                Text {
+                    id: storageText
+                    width: parent.width
+                    color: Core.Theme.color.mutedText
+                    font.pixelSize: Core.Theme.fontSize.body
+                    font.family: Core.Theme.appFontFamily
+                    wrapMode: Text.WordWrap
+                    text: "普通设置进入 user_data/config/settings.json，加密字段进入 user_data/secure/secrets.bin。输入框会自动保存，统一保存入口保留在设置页。"
+                }
 
                 AppTextField {
                     id: settingInput
@@ -88,30 +119,11 @@ Item {
                 }
 
                 Row {
-                    spacing: 8
+                    spacing: Core.Theme.dp(8)
                     AppButton {
                         variant: "primary"
-                        text: "保存全部设置"
-                        minButtonWidth: 146
-                        onClicked: {
-                            if (!root.appReady) return
-                            settingInput.saveValue(true, false)
-                            secretInput.saveValue(true, false)
-                            const tokenValue = secretInput.readStoredValue("")
-                            const settingKind = settingInput.encrypted ? "密文字段：" : "普通字段："
-                            const secretKind = secretInput.encrypted ? "密文字段：" : "普通字段："
-                            const w = root.toastHost()
-                            if (w && w.showToast) w.showToast("配置更改 - 已保存")
-                            storageText.text = "已保存。" + settingKind + settingInput.text
-                                    + "\n" + secretKind + tokenValue
-                                    + "\n明文配置：" + root.configPath()
-                                    + "\n密文配置：" + root.secretFile()
-                        }
-                    }
-                    AppButton {
-                        variant: "soft"
                         text: "显示确认弹窗"
-                        minButtonWidth: 112
+                        minButtonWidth: Core.Theme.dp(128)
                         onClicked: demoDialog.openCentered(root.Window.window ? root.Window.window.contentItem : root)
                     }
                 }
@@ -120,21 +132,29 @@ Item {
 
         Rectangle {
             width: parent.width
-            height: 260
+            height: Math.max(Core.Theme.dp(238), performanceContent.implicitHeight + Core.Theme.dp(36))
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
             border.color: Core.Theme.color.outlineAccent
             Behavior on color { ColorAnimation { duration: 150 } }
 
             BackgroundRipple { radius: parent.radius }
+            CardAccentGlow { radius: parent.radius }
 
             Column {
+                id: performanceContent
                 z: 1
                 anchors.fill: parent
-                anchors.margins: 18
-                spacing: 12
-                Text { text: "性能模式"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.sp(18); font.bold: true }
-                Text { width: parent.width; color: Core.Theme.color.mutedText; font.pixelSize: Core.Theme.fontSize.body; wrapMode: Text.WordWrap; text: "页面由 qml/layout/PageHost.qml 通过 Loader 懒加载，未切换到的页面不会创建。重型页面后续可以继续拆分内部 Loader，或使用 C++/Python 模型暴露给 QML。" }
+                anchors.margins: Core.Theme.dp(18)
+                spacing: Core.Theme.dp(12)
+                Text { text: "面向低内存设备的资源策略"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.sp(18); font.family: Core.Theme.headingFontFamily; font.weight: Core.Theme.headingFontWeight; font.letterSpacing: Core.Theme.headingLetterSpacing }
+                Text {
+                    width: parent.width
+                    color: Core.Theme.color.mutedText
+                    font.pixelSize: Core.Theme.fontSize.body
+                    wrapMode: Text.WordWrap
+                    text: "页面按需加载；低内存模式会减少关闭后的驻留对象，并把子窗口里可选的视觉效果逐步降级。完整窗口行为和阴影策略不会随模式热重建。"
+                }
                 AppCheckBox { text: "示例开关会保存到普通配置"; storageKey: "demo/switch"; autoLoad: true }
                 AppTextField { width: parent.width; placeholderText: "示例输入"; storageKey: "demo/performanceInput"; autoLoad: true }
             }

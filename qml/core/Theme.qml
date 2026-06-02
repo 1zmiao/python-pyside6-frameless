@@ -11,6 +11,14 @@ QtObject {
     property int baseFontSize: Math.max(12, Math.min(20, Math.round(13 * fontScale)))
     property real controlScale: Math.max(0.90, Math.min(1.24, fontScale))
     property bool showColorButton: (typeof App !== "undefined" && App && App.theme) ? App.theme.showColorButton : true
+    property bool lowMemoryMode: (typeof App !== "undefined" && App && App.performance) ? App.performance.lowMemoryMode : false
+    property QtObject headingFont: FontLoader {
+        source: "../../resources/fonts/NotoSansSC-VF.ttf"
+    }
+    property string appFontFamily: headingFont.status === FontLoader.Ready ? headingFont.name : "Microsoft YaHei UI"
+    property string headingFontFamily: appFontFamily
+    property int headingFontWeight: Font.Medium
+    property real headingLetterSpacing: 0.58
 
     function mix(a, b, t) {
         t = Math.max(0, Math.min(1, t))
@@ -103,7 +111,7 @@ QtObject {
         property color card: theme.mix(theme.baseCard, theme.primary, theme.mode === "dark" ? 0.12 : 0.045)
         property color cardAlt: theme.mix(theme.baseCard, theme.primary, theme.mode === "dark" ? 0.22 : 0.09)
         property color sidebar: theme.mix(theme.baseSurfaceAlt, theme.primary, theme.mode === "dark" ? 0.30 : 0.120)
-        property color sidebarHover: theme.mix(theme.baseSurfaceAlt, theme.primary, theme.mode === "dark" ? 0.35 : 0.13)
+        property color sidebarHover: theme.mix(theme.baseSurfaceAlt, theme.primary, theme.mode === "dark" ? 0.42 : 0.18)
         property color sidebarAccent: theme.alpha(theme.primary, theme.mode === "dark" ? 0.17 : 0.09)
         property color navActive: theme.primaryContainer
         property color navActiveStrong: theme.primaryContainerStrong
@@ -116,14 +124,15 @@ QtObject {
         property color mutedText: theme.mode === "dark" ? "#C8D0E0" : "#5E6472"
         property color outline: theme.mix(theme.baseOutline, theme.primary, theme.mode === "dark" ? 0.18 : 0.14)
         property color outlineAccent: theme.primaryOutline
+        property color windowEdge: theme.mode === "dark" ? theme.alpha(theme.white, 0.20) : theme.alpha(theme.primary, 0.34)
         property color hairline: theme.mix(theme.baseOutline, theme.primary, theme.mode === "dark" ? 0.12 : 0.08)
 
         property color controlHover: theme.mode === "dark"
-            ? theme.mix(theme.mix(theme.baseSurfaceAlt, theme.primary, 0.28), theme.white, 0.08)
-            : theme.mix(theme.mix(theme.baseSurfaceAlt, theme.primary, 0.04), theme.black, 0.055)
+            ? theme.mix(theme.baseSurfaceAlt, theme.primary, 0.38)
+            : theme.mix(theme.baseSurfaceAlt, theme.primary, 0.13)
         property color controlPressed: theme.mode === "dark"
-            ? theme.mix(theme.mix(theme.baseSurfaceAlt, theme.primary, 0.34), theme.white, 0.12)
-            : theme.mix(theme.mix(theme.baseSurfaceAlt, theme.primary, 0.07), theme.black, 0.085)
+            ? theme.mix(theme.baseSurfaceAlt, theme.primary, 0.52)
+            : theme.mix(theme.baseSurfaceAlt, theme.primary, 0.22)
         property color controlChecked: theme.primaryContainer
         property color field: theme.mix(theme.baseCard, theme.primary, theme.mode === "dark" ? 0.08 : 0.02)
         property color fieldFocus: theme.mix(theme.baseCard, theme.primary, theme.mode === "dark" ? 0.16 : 0.06)

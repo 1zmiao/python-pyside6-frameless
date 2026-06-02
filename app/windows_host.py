@@ -498,18 +498,39 @@ class NativeFramelessHost(QWidget):
             pass
         self.close()
 
+    def _apply_hwnd_topmost(self, hwnd: int, enabled: bool, activate: bool = False) -> None:
+        if sys.platform != "win32" or not hwnd:
+            return
+        try:
+            hwnd_p = wintypes.HWND(int(hwnd))
+            if not user32.IsWindow(hwnd_p):
+                return
+            HWND_TOPMOST = -1
+            HWND_NOTOPMOST = -2
+            flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER
+            if not (enabled and activate):
+                flags |= SWP_NOACTIVATE
+            user32.SetWindowPos(hwnd_p, wintypes.HWND(HWND_TOPMOST if enabled else HWND_NOTOPMOST), 0, 0, 0, 0, flags)
+            if enabled and activate:
+                try:
+                    user32.BringWindowToTop(hwnd_p)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     @Slot(bool)
     def setAlwaysOnTop(self, enabled: bool) -> None:
         enabled = bool(enabled)
-        if enabled == self._always_on_top:
-            return
+        changed = enabled != self._always_on_top
         self._always_on_top = enabled
         if sys.platform == "win32":
             try:
-                HWND_TOPMOST = -1
-                HWND_NOTOPMOST = -2
-                flags = SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER
-                user32.SetWindowPos(wintypes.HWND(int(self.winId())), HWND_TOPMOST if enabled else HWND_NOTOPMOST, 0, 0, 0, 0, flags)
+                hwnd_value = int(self.winId())
+                self._apply_hwnd_topmost(hwnd_value, enabled, activate=enabled)
+                QTimer.singleShot(0, lambda hwnd_value=hwnd_value, enabled=enabled: self._apply_hwnd_topmost(hwnd_value, enabled, activate=False))
+                QTimer.singleShot(80, lambda hwnd_value=hwnd_value, enabled=enabled: self._apply_hwnd_topmost(hwnd_value, enabled, activate=False))
+                QTimer.singleShot(180, lambda hwnd_value=hwnd_value, enabled=enabled: self._apply_hwnd_topmost(hwnd_value, enabled, activate=False))
             except Exception:
                 pass
         else:
@@ -524,7 +545,8 @@ class NativeFramelessHost(QWidget):
                 self.show()
                 self.raise_()
                 self.activateWindow()
-        self.alwaysOnTopChanged.emit(enabled)
+        if changed:
+            self.alwaysOnTopChanged.emit(enabled)
 
     @Slot()
     def activateHost(self) -> None:

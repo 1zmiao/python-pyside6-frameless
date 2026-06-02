@@ -28,7 +28,7 @@ CheckBox {
         App.settings.setValue(storageKey, checked)
         const w = toastHost()
         if (w && w.showToast)
-            w.showToast("配置更改 - 已保存")
+            w.showToast("配置已保存")
         return true
     }
 
@@ -49,6 +49,7 @@ CheckBox {
             color: "white"
             font.bold: true
             font.pixelSize: Core.Theme.fontSize.small
+            font.family: Core.Theme.appFontFamily
         }
     }
 
@@ -57,6 +58,7 @@ CheckBox {
         color: Core.Theme.color.text
         verticalAlignment: Text.AlignVCenter
         font.pixelSize: Core.Theme.fontSize.control
+        font.family: Core.Theme.appFontFamily
         leftPadding: root.indicator.width + root.spacing
         elide: Text.ElideRight
         Behavior on color { ColorAnimation { duration: 120 } }

@@ -58,6 +58,7 @@ Item {
         anchors.centerIn: parent
         color: root.isFilled ? Core.Theme.primaryText : Core.Theme.color.text
         font.pixelSize: root.labelPixelSize
+        font.family: Core.Theme.appFontFamily
         font.bold: root.isFilled || root.active
         elide: Text.ElideRight
     }

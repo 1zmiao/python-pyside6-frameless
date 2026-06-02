@@ -76,7 +76,7 @@ Item {
         if (notify !== false) {
             const w = toastHost()
             if (w && w.showToast)
-                w.showToast("配置更改 - 已保存")
+                w.showToast("配置已保存")
         }
         return true
     }
@@ -174,6 +174,7 @@ Item {
         color: root.placeholderTextColor
         opacity: 1.0
         font.pixelSize: Core.Theme.fontSize.control
+        font.family: Core.Theme.appFontFamily
         elide: Text.ElideRight
     }
 
@@ -194,6 +195,7 @@ Item {
         echoMode: root.encrypted ? (root.revealed ? TextInput.Normal : root.secureEchoMode) : root.echoMode
         clip: true
         font.pixelSize: Core.Theme.fontSize.control
+        font.family: Core.Theme.appFontFamily
         verticalAlignment: TextInput.AlignVCenter
         onTextEdited: root.scheduleAutoSave()
         onEditingFinished: { root.editingFinished(); root.scheduleAutoSave() }

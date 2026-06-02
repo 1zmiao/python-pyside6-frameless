@@ -43,6 +43,7 @@ Item {
         visible: !root.compact
         color: root.selected ? Core.Theme.color.navSelectedText : Core.Theme.color.text
         font.pixelSize: Core.Theme.fontSize.control
+        font.family: Core.Theme.appFontFamily
         font.bold: root.selected
         elide: Text.ElideRight
     }

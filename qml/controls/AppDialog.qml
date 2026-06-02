@@ -182,7 +182,9 @@ Popup {
                 text: root.dialogTitle
                 color: Core.Theme.color.text
                 font.pixelSize: Core.Theme.sp(18)
-                font.bold: true
+                font.family: Core.Theme.headingFontFamily
+                font.weight: Core.Theme.headingFontWeight
+                font.letterSpacing: Core.Theme.headingLetterSpacing
                 elide: Text.ElideRight
             }
         }

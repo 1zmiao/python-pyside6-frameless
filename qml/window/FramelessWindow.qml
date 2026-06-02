@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 import QtQuick.Window
 import QtQuick.Controls
 import "../core" as Core
@@ -26,6 +26,7 @@ Window {
     property bool shadowEnabled: true
     property bool showNavToggle: true
     property bool showColorButton: Core.Theme.showColorButton
+    property bool lowMemoryVisuals: Core.Theme.lowMemoryMode && root.windowKey !== "main"
     property int normalCornerRadius: Core.Theme.radius.window
     property int cornerRadius: (visibility === Window.Maximized || visibility === Window.FullScreen) ? 0 : normalCornerRadius
     property bool resizeEnabled: visibility !== Window.Maximized && visibility !== Window.FullScreen
@@ -113,7 +114,8 @@ Window {
         root._localThemeAnimation = true
         if (root.bridge.theme.setRippleOrigin)
             root.bridge.theme.setRippleOrigin(cx, cy)
-        transitionLayer.play(cx, cy, nextMode)
+        if (!root.lowMemoryVisuals)
+            transitionLayer.play(cx, cy, nextMode)
         root.bridge.theme.setMode(nextMode)
         root.requestThemeToggle(Qt.point(cx, cy), nextMode)
     }
@@ -322,6 +324,17 @@ Window {
         }
 
 
+        Rectangle {
+            id: windowEdgeOverlay
+            anchors.fill: parent
+            z: 90
+            radius: root.cornerRadius
+            color: "transparent"
+            border.color: root.cornerRadius > 0 ? Core.Theme.color.windowEdge : "transparent"
+            border.width: root.cornerRadius > 0 ? 1 : 0
+            antialiasing: true
+        }
+
         ListModel { id: toastModel }
 
         Repeater {
@@ -423,7 +436,9 @@ Window {
                 root._localThemeAnimation = false
                 return
             }
-            transitionLayer.play(frameRoot.width / 2, frameRoot.height / 2, mode)
+            if (!root.lowMemoryVisuals)
+                if (!root.lowMemoryVisuals)
+                    transitionLayer.play(frameRoot.width / 2, frameRoot.height / 2, mode)
         }
         function onPrimaryColorChanged(color) {
             // Pure QML color updates. Avoid native frame refresh while dragging the color wheel.
