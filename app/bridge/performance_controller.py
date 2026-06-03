@@ -19,7 +19,7 @@ class PerformanceController(QObject):
     developerUnlockedChanged = Signal(bool)
 
     _VALID_PROFILES = {"auto", "normal", "low-memory"}
-    _LOW_MEMORY_AUTO_LIMIT_MB = 2048
+    _LOW_MEMORY_AUTO_LIMIT_MB = 4096
 
     def __init__(self, settings: SettingsStore, parent=None):
         super().__init__(parent)

@@ -28,12 +28,27 @@ Item {
     property bool _dirty: false
     property bool _loading: false
     property string _storageModeKey: storageKey.length > 0 ? ("storageModes/" + storageKey) : ""
+    property string _revealModeKey: storageKey.length > 0 ? ("fieldRevealModes/" + storageKey) : ""
 
     function applyPersistedStorageMode() {
         if (!storageKey || storageKey.length === 0 || typeof App === "undefined" || !App || !App.settings)
             return
         const mode = App.settings.valueOr(root._storageModeKey, root.encrypted ? "encrypted" : "plain")
         root.encrypted = mode === "encrypted"
+    }
+
+    function applyPersistedRevealMode() {
+        if (!storageKey || storageKey.length === 0 || typeof App === "undefined" || !App || !App.settings)
+            return
+        const fallback = root.revealed ? "revealed" : "hidden"
+        const mode = App.settings.valueOr(root._revealModeKey, fallback)
+        root.revealed = mode !== "hidden"
+    }
+
+    function persistRevealMode() {
+        if (!storageKey || storageKey.length === 0 || typeof App === "undefined" || !App || !App.settings)
+            return
+        App.settings.setValue(root._revealModeKey, root.revealed ? "revealed" : "hidden")
     }
 
     signal editingFinished()
@@ -221,6 +236,7 @@ Item {
             tooltip: root.revealed ? "点击锁定隐藏明文" : "点击解锁显示明文"
             onClicked: {
                 root.revealed = !root.revealed
+                root.persistRevealMode()
                 input.forceActiveFocus()
             }
         }
@@ -262,6 +278,7 @@ Item {
 
     Component.onCompleted: {
         applyPersistedStorageMode()
+        applyPersistedRevealMode()
         if (autoLoad && storageKey.length > 0)
             loadStoredValue(input.text)
         else

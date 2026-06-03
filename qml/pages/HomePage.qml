@@ -34,7 +34,7 @@ Item {
             height: Math.max(Core.Theme.dp(164), heroContent.implicitHeight + Core.Theme.dp(36))
             radius: Core.Theme.radius.card
             color: Core.Theme.color.hero
-            border.color: Core.Theme.color.outlineAccent
+            border.color: Core.Theme.color.cardOutline
             Behavior on color { ColorAnimation { duration: 150 } }
 
             BackgroundRipple { radius: parent.radius }
@@ -78,7 +78,7 @@ Item {
             height: Math.max(Core.Theme.dp(292), storageContent.implicitHeight + Core.Theme.dp(36))
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
-            border.color: Core.Theme.color.outlineAccent
+            border.color: Core.Theme.color.cardOutline
             Behavior on color { ColorAnimation { duration: 150 } }
 
             BackgroundRipple { radius: parent.radius }
@@ -135,7 +135,7 @@ Item {
             height: Math.max(Core.Theme.dp(238), performanceContent.implicitHeight + Core.Theme.dp(36))
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
-            border.color: Core.Theme.color.outlineAccent
+            border.color: Core.Theme.color.cardOutline
             Behavior on color { ColorAnimation { duration: 150 } }
 
             BackgroundRipple { radius: parent.radius }

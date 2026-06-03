@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 import QtQuick.Window
 import QtQuick.Controls
 import "../core" as Core
@@ -6,6 +6,12 @@ import "../controls"
 
 Item {
     id: root
+
+    readonly property real devicePixelRatio: Math.max(1.0, (root.Window.window && root.Window.window.screen) ? root.Window.window.screen.devicePixelRatio : Screen.devicePixelRatio)
+    readonly property real physicalPixel: 1.0 / devicePixelRatio
+    function snapToPhysicalPixel(value) {
+        return Math.round(value / physicalPixel) * physicalPixel
+    }
 
     property var leftMenus: []
     property bool navHidden: false
@@ -15,6 +21,8 @@ Item {
     property bool windowMaximized: false
     property bool showNavToggle: true
     property bool showColorButton: Core.Theme.showColorButton
+    property bool showThemeButton: true
+    property bool showPinButton: true
     property bool useNativeCaption: false
     // Title bar spacing knobs: adjust these for the whole title-bar layout.
     // Lower titleButtonHeightRatio leaves more vertical gap around title buttons.
@@ -30,13 +38,13 @@ Item {
     property real nativeCaptionRightA: nativeCaptionLeftA + titleDragBox.width
     property real nativeCaptionLeftB: dragArea.x
     property real nativeCaptionRightB: dragArea.x + dragArea.width
-    property alias navToggleButtonItem: navToggleButton
+    property var navToggleButtonItem: navToggleButtonLoader.item
     property alias titleDragItem: titleDragBox
     property alias leftMenusAreaItem: leftMenusArea
     property alias dragAreaItem: dragArea
-    property alias paletteButtonItem: paletteButton
-    property alias themeButtonItem: themeButton
-    property alias pinButtonItem: pinButton
+    property var paletteButtonItem: paletteButtonLoader.item
+    property var themeButtonItem: themeButtonLoader.item
+    property var pinButtonItem: pinButtonLoader.item
     property alias minimizeButtonItem: minimizeButton
     property alias maximizeButtonItem: maximizeButton
     property alias closeButtonItem: closeButton
@@ -65,9 +73,12 @@ Item {
     }
 
     function closeMenus() {
-        menuPopup.close()
-        colorPopup.close()
-        paletteContextMenu.close()
+        if (menuPopupLoader.item)
+            menuPopupLoader.item.close()
+        if (colorPopupLoader.item)
+            colorPopupLoader.item.close()
+        if (paletteContextMenuLoader.item)
+            paletteContextMenuLoader.item.close()
     }
 
     function dragPress(item, mx, my) {
@@ -116,22 +127,11 @@ Item {
     Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
-        anchors.bottom: parent.bottom
-        height: 1
+        y: root.snapToPhysicalPixel(parent.height) - height
+        z: 3
+        height: root.physicalPixel
         color: Core.Theme.color.hairline
     }
-
-    Rectangle {
-        anchors.left: parent.left
-        anchors.leftMargin: Core.Theme.dp(8)
-        anchors.bottom: parent.bottom
-        width: Core.Theme.dp(68)
-        height: Math.max(1, Core.Theme.dp(2))
-        radius: 1
-        color: Core.Theme.primary
-        opacity: 0.52
-    }
-
     Row {
         id: leftArea
         z: 2
@@ -141,18 +141,22 @@ Item {
         anchors.bottom: parent.bottom
         spacing: root.titleButtonSpacing
 
-        IconButton {
-            id: navToggleButton
-            visible: root.showNavToggle
-            width: visible ? Core.Theme.dp(26) : 0
-            height: visible ? width : 0
+        Loader {
+            id: navToggleButtonLoader
+            active: root.showNavToggle
+            width: active ? Core.Theme.dp(26) : 0
+            height: active ? width : 0
             anchors.verticalCenter: parent.verticalCenter
-            iconName: root.navHidden ? "chevron-right" : "chevron-left"
-            strokeWidth: 0.90
-            noBorder: true
-            tooltip: root.navHidden ? "展开导航" : "隐藏导航"
-            clickOnPress: true
-            onClicked: root.toggleNavRequested()
+            sourceComponent: IconButton {
+                width: navToggleButtonLoader.width
+                height: navToggleButtonLoader.height
+                iconName: root.navHidden ? "chevron-right" : "chevron-left"
+                strokeWidth: 0.90
+                noBorder: true
+                tooltip: root.navHidden ? "展开导航" : "隐藏导航"
+                clickOnPress: true
+                onClicked: root.toggleNavRequested()
+            }
         }
 
         Item {
@@ -205,7 +209,12 @@ Item {
                     labelPixelSize: Core.Theme.fontSize.caption
                     text: modelData.text
                     clickOnPress: true
-                    onClicked: { colorPopup.close(); menuPopup.openFor(modelData.action, this) }
+                    onClicked: {
+                        if (colorPopupLoader.item)
+                            colorPopupLoader.item.close()
+                        if (menuPopupLoader.item)
+                            menuPopupLoader.item.openFor(modelData.action, this)
+                    }
                 }
             }
         }
@@ -239,67 +248,89 @@ Item {
         anchors.bottom: parent.bottom
         spacing: root.titleButtonSpacing
 
-        IconButton {
-            id: paletteButton
-            visible: root.showColorButton
-            width: visible ? root.rightButtonSize : 0
-            height: root.rightButtonSize
+        Loader {
+            id: paletteButtonLoader
+            active: root.showColorButton
+            width: active ? root.rightButtonSize : 0
+            height: active ? root.rightButtonSize : 0
             anchors.verticalCenter: parent.verticalCenter
-            iconName: "palette"
-            strokeWidth: 0.90
-            noBorder: true
-            tooltip: "主题色"
-            clickOnPress: true
-            onClicked: {
-                if (colorPopup.visible) {
-                    colorPopup.close()
-                } else {
-                    menuPopup.close()
-                    colorPopup.openNear(paletteButton)
+            sourceComponent: IconButton {
+                id: paletteButton
+                width: paletteButtonLoader.width
+                height: paletteButtonLoader.height
+                iconName: "palette"
+                strokeWidth: 0.90
+                noBorder: true
+                tooltip: "主题色"
+                clickOnPress: true
+                onClicked: {
+                    if (!colorPopupLoader.item)
+                        return
+                    if (colorPopupLoader.item.visible) {
+                        colorPopupLoader.item.close()
+                    } else {
+                        if (menuPopupLoader.item)
+                            menuPopupLoader.item.close()
+                        colorPopupLoader.item.openNear(paletteButton)
+                    }
+                }
+                onRightClicked: function(localX, localY) {
+                    if (!paletteContextMenuLoader.item)
+                        return
+                    const host = paletteContextMenuLoader.item.parent
+                    const p = paletteButton.mapToItem(host, localX, localY)
+                    paletteContextMenuLoader.item.openForActions([
+                        { "text": "隐藏调色按钮", "action": "hidePalette", "available": true }
+                    ], p.x, p.y)
                 }
             }
-            onRightClicked: function(localX, localY) {
-                const host = paletteContextMenu.parent
-                const p = paletteButton.mapToItem(host, localX, localY)
-                paletteContextMenu.openForActions([
-                    { "text": "隐藏调色按钮", "action": "hidePalette", "available": true }
-                ], p.x, p.y)
+        }
+
+        Loader {
+            id: themeButtonLoader
+            active: root.showThemeButton
+            width: active ? root.rightButtonSize : 0
+            height: active ? root.rightButtonSize : 0
+            anchors.verticalCenter: parent.verticalCenter
+            sourceComponent: IconButton {
+                id: themeButton
+                width: themeButtonLoader.width
+                height: themeButtonLoader.height
+                iconName: Core.Theme.mode === "dark" ? "sun" : "moon"
+                strokeWidth: 0.90
+                noBorder: true
+                tooltip: "日夜切换"
+                onClicked: {
+                    const next = Core.Theme.mode === "dark" ? "light" : "dark"
+                    const p = themeButton.mapToItem(root, themeButton.width / 2, themeButton.height / 2)
+                    root.themeToggleRequested(Qt.point(p.x, p.y), next)
+                }
             }
         }
 
-        IconButton {
-            id: themeButton
-            width: root.rightButtonSize
-            height: root.rightButtonSize
+        Loader {
+            id: pinButtonLoader
+            active: root.showPinButton
+            width: active ? root.rightButtonSize : 0
+            height: active ? root.rightButtonSize : 0
             anchors.verticalCenter: parent.verticalCenter
-            iconName: Core.Theme.mode === "dark" ? "sun" : "moon"
-            strokeWidth: 0.90
-            noBorder: true
-            tooltip: "日夜切换"
-            onClicked: {
-                const next = Core.Theme.mode === "dark" ? "light" : "dark"
-                const p = themeButton.mapToItem(root, themeButton.width / 2, themeButton.height / 2)
-                root.themeToggleRequested(Qt.point(p.x, p.y), next)
+            sourceComponent: IconButton {
+                width: pinButtonLoader.width
+                height: pinButtonLoader.height
+                accent: false
+                noBorder: true
+                strokeWidth: root.alwaysOnTop ? 1.0 : 0.90
+                iconName: root.alwaysOnTop ? "pin-filled" : "pin"
+                iconColor: root.alwaysOnTop ? (Core.Theme.mode === "dark" ? Core.Theme.white : "#20242C") : Core.Theme.color.icon
+                tooltip: root.alwaysOnTop ? "取消置顶" : "窗口置顶"
+                clickOnPress: true
+                onClicked: root.alwaysOnTopRequested(!root.alwaysOnTop)
             }
-        }
-
-        IconButton {
-            id: pinButton
-            width: root.rightButtonSize
-            height: root.rightButtonSize
-            anchors.verticalCenter: parent.verticalCenter
-            accent: false
-            noBorder: true
-            strokeWidth: root.alwaysOnTop ? 1.0 : 0.90
-            iconName: root.alwaysOnTop ? "pin-filled" : "pin"
-            iconColor: root.alwaysOnTop ? (Core.Theme.mode === "dark" ? Core.Theme.white : "#20242C") : Core.Theme.color.icon
-            tooltip: root.alwaysOnTop ? "取消置顶" : "窗口置顶"
-            clickOnPress: true
-            onClicked: root.alwaysOnTopRequested(!root.alwaysOnTop)
         }
 
         Item {
-            width: root.titleButtonSeparatorGap
+            visible: paletteButtonLoader.active || themeButtonLoader.active || pinButtonLoader.active
+            width: visible ? root.titleButtonSeparatorGap : 0
             height: parent.height
 
             Rectangle {
@@ -316,29 +347,39 @@ Item {
         IconButton { id: closeButton; width: root.rightButtonSize; height: root.rightButtonSize; anchors.verticalCenter: parent.verticalCenter; iconName: "close"; strokeWidth: 0.90; noBorder: true; onClicked: root.closeRequested() }
     }
 
-    AppContextMenu {
-        id: paletteContextMenu
-        parent: root.Window.window ? root.Window.window.contentItem : root
-        menuWidth: Core.Theme.dp(188)
-        onActionTriggered: function(action) {
-            if (action === "hidePalette") {
-                colorPopup.close()
-                if (typeof App !== "undefined" && App && App.theme)
-                    App.theme.setShowColorButton(false)
-                else if (typeof App !== "undefined" && App && App.settings)
-                    App.settings.setValue("ui/showColorButton", false)
+    Loader {
+        id: paletteContextMenuLoader
+        active: root.showColorButton
+        sourceComponent: AppContextMenu {
+            parent: root.Window.window ? root.Window.window.contentItem : root
+            menuWidth: Core.Theme.dp(188)
+            onActionTriggered: function(action) {
+                if (action === "hidePalette") {
+                    if (colorPopupLoader.item)
+                        colorPopupLoader.item.close()
+                    if (typeof App !== "undefined" && App && App.theme)
+                        App.theme.setShowColorButton(false)
+                    else if (typeof App !== "undefined" && App && App.settings)
+                        App.settings.setValue("ui/showColorButton", false)
+                }
             }
         }
     }
 
-
-    AppMenu {
-        id: menuPopup
-        parent: root.Window.window ? root.Window.window.contentItem : root
-        onActionTriggered: function(action, kind) { root.menuActionRequested(action, kind) }
+    Loader {
+        id: menuPopupLoader
+        active: root.leftMenus && root.leftMenus.length > 0
+        sourceComponent: AppMenu {
+            parent: root.Window.window ? root.Window.window.contentItem : root
+            onActionTriggered: function(action, kind) { root.menuActionRequested(action, kind) }
+        }
     }
 
-    ColorPalettePopup { id: colorPopup; parent: root.Window.window ? root.Window.window.contentItem : root }
+    Loader {
+        id: colorPopupLoader
+        active: root.showColorButton
+        sourceComponent: ColorPalettePopup { parent: root.Window.window ? root.Window.window.contentItem : root }
+    }
 }
 
 

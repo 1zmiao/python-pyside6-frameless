@@ -8,6 +8,10 @@ import "../controls"
 Window {
     id: root
 
+    readonly property real devicePixelRatio: Math.max(1.0, (root.screen ? root.screen.devicePixelRatio : Screen.devicePixelRatio))
+    readonly property real physicalPixel: 1.0 / devicePixelRatio
+    readonly property real stableHairline: Math.max(1.0, physicalPixel)
+
     default property alias content: contentHost.data
     property var bridge
     property string windowKey: "window"
@@ -18,7 +22,9 @@ Window {
     property bool alwaysOnTop: false
     property bool showNavToggle: true
     property bool showColorButton: Core.Theme.showColorButton
-    property bool lowMemoryVisuals: Core.Theme.lowMemoryMode && root.windowKey !== "main"
+    property bool showThemeButton: true
+    property bool showPinButton: true
+    property bool lowMemoryVisuals: root.windowKey !== "main"
     property bool autoRestoreWindowState: true
     property bool autoShow: true
     property bool snappedVisual: false
@@ -190,8 +196,8 @@ Window {
         root._localThemeAnimation = true
         if (root.bridge.theme.setRippleOrigin)
             root.bridge.theme.setRippleOrigin(cx, cy)
-        if (!root.lowMemoryVisuals)
-            transitionLayer.play(cx, cy, nextMode)
+        if (!root.lowMemoryVisuals && transitionLayer.item)
+            transitionLayer.item.play(cx, cy, nextMode)
         root.bridge.theme.setMode(nextMode)
         root.requestThemeToggle(Qt.point(cx, cy), nextMode)
     }
@@ -244,20 +250,25 @@ Window {
             Behavior on radius { NumberAnimation { duration: 80; easing.type: Easing.OutCubic } }
         }
 
-        ThemeTransitionLayer {
+        Loader {
             id: transitionLayer
             anchors.fill: parent
-            radius: root.cornerRadius
+            active: !root.lowMemoryVisuals
             z: 1
+            sourceComponent: ThemeTransitionLayer {
+                radius: root.cornerRadius
+            }
         }
 
-        Column {
+        Item {
             id: mainColumn
             anchors.fill: parent
             z: 2
 
             TitleBar {
                 id: titleBarControl
+                y: 0
+                z: 2
                 width: parent.width
                 height: Core.Theme.metrics.titleBarHeight
                 windowTitle: root.title.length > 0 ? root.title : Core.AppInfo.windowTitle
@@ -265,6 +276,8 @@ Window {
                 alwaysOnTop: root.alwaysOnTop
                 showNavToggle: root.showNavToggle
                 showColorButton: root.showColorButton
+                showThemeButton: root.showThemeButton
+                showPinButton: root.showPinButton
                 windowMaximized: root.windowMaximized
                 useNativeCaption: true
 
@@ -293,8 +306,10 @@ Window {
 
             Item {
                 id: contentHost
+                y: titleBarControl.height
+                z: 1
                 width: parent.width
-                height: parent.height - titleBarControl.height
+                height: Math.max(0, parent.height - titleBarControl.height)
                 clip: true
             }
         }
@@ -306,7 +321,7 @@ Window {
             radius: root.cornerRadius
             color: "transparent"
             border.color: root.cornerRadius > 0 ? Core.Theme.color.windowEdge : "transparent"
-            border.width: root.cornerRadius > 0 ? 1 : 0
+            border.width: root.cornerRadius > 0 ? root.stableHairline : 0
             antialiasing: true
         }
 
@@ -367,7 +382,8 @@ Window {
                 root._localThemeAnimation = false
                 return
             }
-            transitionLayer.play(frameRoot.width / 2, frameRoot.height / 2, mode)
+            if (!root.lowMemoryVisuals && transitionLayer.item)
+                transitionLayer.item.play(frameRoot.width / 2, frameRoot.height / 2, mode)
         }
     }
 

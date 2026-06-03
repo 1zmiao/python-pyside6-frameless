@@ -1,5 +1,6 @@
 ﻿import QtQuick
 import QtQuick.Controls
+import QtQuick.Window
 import "core" as Core
 import "window"
 import "layout"
@@ -9,6 +10,13 @@ Item {
     id: root
     width: 1080
     height: 700
+
+    readonly property real devicePixelRatio: Math.max(1.0, (root.Window.window && root.Window.window.screen) ? root.Window.window.screen.devicePixelRatio : Screen.devicePixelRatio)
+    readonly property real physicalPixel: 1.0 / devicePixelRatio
+    readonly property real stableHairline: Math.max(1.0, physicalPixel)
+    function snapToPhysicalPixel(value) {
+        return Math.round(value / physicalPixel) * physicalPixel
+    }
 
     property string windowKey: "main"
     property bool nativeMaximized: false
@@ -76,7 +84,7 @@ Item {
         antialiasing: true
         color: Core.Theme.color.surface
         border.color: root.nativeMaximized ? "transparent" : Core.Theme.color.outline
-        border.width: root.nativeMaximized ? 0 : 1
+        border.width: root.nativeMaximized ? 0 : root.stableHairline
         z: 0.5
         Behavior on color { ColorAnimation { duration: 150; easing.type: Easing.OutCubic } }
         Behavior on radius { NumberAnimation { duration: 80; easing.type: Easing.OutCubic } }
@@ -140,13 +148,15 @@ Item {
             z: 1
         }
 
-        Column {
+        Item {
             id: mainColumn
             anchors.fill: parent
             z: 2
 
             TitleBar {
                 id: titleBar
+                y: 0
+                z: 2
                 width: parent.width
                 height: Core.Theme.metrics.titleBarHeight
                 windowTitle: Core.AppInfo.windowTitle
@@ -186,13 +196,15 @@ Item {
 
             Row {
                 id: mainRow
+                y: titleBar.height
+                z: 1
                 width: parent.width
-                height: parent.height - titleBar.height
+                height: Math.max(0, parent.height - titleBar.height)
 
                 ResizableSideNav {
                     id: sideNav
                     height: parent.height
-                    width: (typeof App !== "undefined" && App && App.settings) ? Math.max(0, Math.min(App.settings.valueOr("layout/navWidth", Core.Theme.metrics.navWidthDefault), Core.Theme.metrics.navWidthMax)) : Core.Theme.metrics.navWidthDefault
+                    width: root.snapToPhysicalPixel((typeof App !== "undefined" && App && App.settings) ? Math.max(0, Math.min(App.settings.valueOr("layout/navWidth", Core.Theme.metrics.navWidthDefault), Core.Theme.metrics.navWidthMax)) : Core.Theme.metrics.navWidthDefault)
                     cornerRadius: root.cornerRadius
                     onCurrentPageChanged: pageHost.showPage(currentPage)
                 }
@@ -212,7 +224,7 @@ Item {
             radius: root.cornerRadius
             color: "transparent"
             border.color: root.cornerRadius > 0 ? Core.Theme.color.windowEdge : "transparent"
-            border.width: root.cornerRadius > 0 ? 1 : 0
+            border.width: root.cornerRadius > 0 ? root.stableHairline : 0
             antialiasing: true
         }
 

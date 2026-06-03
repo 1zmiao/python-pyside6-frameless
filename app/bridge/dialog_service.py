@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import gc
+import weakref
 from pathlib import Path
 
 from PySide6.QtCore import QObject, QTimer, QUrl, Slot
@@ -36,7 +38,7 @@ class DialogService(QObject):
                     return
             except Exception:
                 pass
-            self._page_windows.pop(page_key, None)
+            self._destroy_child_window(id(existing), page_key, existing)
         page_source = self._page_source(page_key)
         child_source = self._qml_dir / "window" / ("NativeChildWindow.qml" if self._native_window_shell else "ChildWindow.qml")
 
@@ -72,9 +74,10 @@ class DialogService(QObject):
         self._windows[obj_id] = obj
         self._page_windows[page_key] = obj
         obj.destroyed.connect(lambda *_args, obj_id=obj_id, page_key=page_key: (self._windows.pop(obj_id, None), self._page_windows.pop(page_key, None)))
+        obj_ref = weakref.ref(obj)
         try:
             obj.windowEvent.connect(
-                lambda event_type, _payload, obj=obj, obj_id=obj_id, page_key=page_key: self._handle_window_event(obj_id, page_key, obj, event_type)
+                lambda event_type, _payload, obj_ref=obj_ref, obj_id=obj_id, page_key=page_key: self._handle_window_event(obj_id, page_key, obj_ref(), event_type)
             )
         except Exception:
             pass
@@ -89,6 +92,7 @@ class DialogService(QObject):
             obj.show()
         except Exception:
             pass
+
 
     def set_native_window_shell(self, enabled: bool) -> None:
         self._native_window_shell = bool(enabled)
@@ -121,14 +125,30 @@ class DialogService(QObject):
     def _handle_window_event(self, obj_id: int, page_key: str, obj: QObject, event_type: str) -> None:
         if str(event_type) != "closing":
             return
-        if not self._low_memory_mode():
-            return
+        self._destroy_child_window(obj_id, page_key, obj)
+
+    def _destroy_child_window(self, obj_id: int, page_key: str, obj: QObject | None) -> None:
         self._windows.pop(obj_id, None)
         self._page_windows.pop(page_key, None)
-        QTimer.singleShot(0, obj.deleteLater)
+        if obj is not None:
+            try:
+                QTimer.singleShot(0, obj.deleteLater)
+            except Exception:
+                pass
+        QTimer.singleShot(120, self._trim_engine_cache)
+        QTimer.singleShot(180, self._collect_garbage)
 
-    def _low_memory_mode(self) -> bool:
+    def _trim_engine_cache(self) -> None:
         try:
-            return bool(self._performance and self._performance.lowMemoryMode)
+            self._engine.trimComponentCache()
         except Exception:
-            return False
+            pass
+
+    def _collect_garbage(self) -> None:
+        try:
+            if self._performance and hasattr(self._performance, "collectGarbage"):
+                self._performance.collectGarbage()
+                return
+        except Exception:
+            pass
+        gc.collect()

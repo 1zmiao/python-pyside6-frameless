@@ -7,6 +7,9 @@ FramelessWindow {
     bridge: App
     autoRestoreWindowState: false
     showNavToggle: false
+    showColorButton: false
+    showThemeButton: false
+    showPinButton: false
     title: pageTitle
     width: 760
     height: 520

@@ -12,10 +12,10 @@ QtObject {
     property real controlScale: Math.max(0.90, Math.min(1.24, fontScale))
     property bool showColorButton: (typeof App !== "undefined" && App && App.theme) ? App.theme.showColorButton : true
     property bool lowMemoryMode: (typeof App !== "undefined" && App && App.performance) ? App.performance.lowMemoryMode : false
-    property QtObject headingFont: FontLoader {
-        source: "../../resources/fonts/NotoSansSC-VF.ttf"
-    }
-    property string appFontFamily: headingFont.status === FontLoader.Ready ? headingFont.name : "Microsoft YaHei UI"
+    // Prefer platform fonts at startup. Loading the bundled CJK variable font
+    // eagerly increases the base RSS of the main QML window; keep the asset for
+    // projects that need exact typography, but do not load it by default.
+    property string appFontFamily: Qt.platform.os === "windows" ? "Microsoft YaHei UI" : "Noto Sans CJK SC"
     property string headingFontFamily: appFontFamily
     property int headingFontWeight: Font.Medium
     property real headingLetterSpacing: 0.58
@@ -56,8 +56,8 @@ QtObject {
     property color primarySoftHover: mix(baseSurface, primary, mode === "dark" ? 0.34 : 0.12)
     property color primarySoftPressed: mix(baseSurface, primary, mode === "dark" ? 0.42 : 0.17)
     property color primaryOutline: alpha(primary, mode === "dark" ? 0.76 : 0.56)
-    property color primaryContainer: mix(baseCard, primary, mode === "dark" ? 0.32 : 0.12)
-    property color primaryContainerStrong: mix(baseCard, primary, mode === "dark" ? 0.46 : 0.20)
+    property color primaryContainer: mix(baseCard, primary, mode === "dark" ? 0.44 : 0.12)
+    property color primaryContainerStrong: mix(baseCard, primary, mode === "dark" ? 0.58 : 0.20)
 
     property QtObject radius: QtObject {
         property int window: 8
@@ -124,15 +124,16 @@ QtObject {
         property color mutedText: theme.mode === "dark" ? "#C8D0E0" : "#5E6472"
         property color outline: theme.mix(theme.baseOutline, theme.primary, theme.mode === "dark" ? 0.18 : 0.14)
         property color outlineAccent: theme.primaryOutline
-        property color windowEdge: theme.mode === "dark" ? theme.alpha(theme.white, 0.20) : theme.alpha(theme.primary, 0.34)
+        property color cardOutline: theme.mode === "dark" ? theme.alpha(Qt.lighter(theme.primary, 1.65), 0.53) : theme.primaryOutline
+        property color windowEdge: theme.mode === "dark" ? theme.alpha(theme.white, 0.16) : theme.alpha(theme.primary, 0.28)
         property color hairline: theme.mix(theme.baseOutline, theme.primary, theme.mode === "dark" ? 0.12 : 0.08)
 
         property color controlHover: theme.mode === "dark"
-            ? theme.mix(theme.baseSurfaceAlt, theme.primary, 0.38)
-            : theme.mix(theme.baseSurfaceAlt, theme.primary, 0.13)
+            ? theme.mix(theme.baseSurfaceAlt, Qt.lighter(theme.primary, 1.65), 0.62)
+            : theme.mix(theme.baseSurfaceAlt, theme.primary, 0.20)
         property color controlPressed: theme.mode === "dark"
-            ? theme.mix(theme.baseSurfaceAlt, theme.primary, 0.52)
-            : theme.mix(theme.baseSurfaceAlt, theme.primary, 0.22)
+            ? theme.mix(theme.baseSurfaceAlt, Qt.lighter(theme.primary, 1.65), 0.76)
+            : theme.mix(theme.baseSurfaceAlt, theme.primary, 0.30)
         property color controlChecked: theme.primaryContainer
         property color field: theme.mix(theme.baseCard, theme.primary, theme.mode === "dark" ? 0.08 : 0.02)
         property color fieldFocus: theme.mix(theme.baseCard, theme.primary, theme.mode === "dark" ? 0.16 : 0.06)

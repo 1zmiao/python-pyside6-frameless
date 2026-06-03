@@ -16,7 +16,7 @@ Item {
             height: Math.max(Core.Theme.dp(142), heroContent.implicitHeight + root.cardPadding * 2)
             radius: Core.Theme.radius.card
             color: Core.Theme.color.hero
-            border.color: Core.Theme.color.outlineAccent
+            border.color: Core.Theme.color.cardOutline
 
             BackgroundRipple { radius: parent.radius }
             CardAccentGlow { radius: parent.radius }
@@ -50,7 +50,7 @@ Item {
             height: behaviorContent.implicitHeight + root.cardPadding * 2
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
-            border.color: Core.Theme.color.outlineAccent
+            border.color: Core.Theme.color.cardOutline
 
             BackgroundRipple { radius: parent.radius }
             CardAccentGlow { radius: parent.radius }
@@ -86,7 +86,7 @@ Item {
             height: advantageContent.implicitHeight + root.cardPadding * 2
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
-            border.color: Core.Theme.color.outlineAccent
+            border.color: Core.Theme.color.cardOutline
 
             BackgroundRipple { radius: parent.radius }
             CardAccentGlow { radius: parent.radius }
@@ -114,7 +114,7 @@ Item {
             height: interfaceContent.implicitHeight + root.cardPadding * 2
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
-            border.color: Core.Theme.color.outlineAccent
+            border.color: Core.Theme.color.cardOutline
 
             BackgroundRipple { radius: parent.radius }
             CardAccentGlow { radius: parent.radius }
@@ -158,7 +158,7 @@ Item {
             height: extensionContent.implicitHeight + root.cardPadding * 2
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
-            border.color: Core.Theme.color.outlineAccent
+            border.color: Core.Theme.color.cardOutline
 
             BackgroundRipple { radius: parent.radius }
             CardAccentGlow { radius: parent.radius }

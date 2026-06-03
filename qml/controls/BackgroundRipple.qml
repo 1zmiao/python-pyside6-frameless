@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 import "../core" as Core
 import "../window"
 
@@ -13,9 +13,8 @@ Item {
     property real startY: height * 0.18
     property int delayMs: Math.max(0, Math.round((root.x * 0.37 + root.y * 0.23) % 220))
     property real opacityScale: 0.62
-    property bool lowMemoryVisuals: Core.Theme.lowMemoryMode
-                                    && root.Window.window
-                                    && root.Window.window.windowKey !== "main"
+    property bool lowMemoryVisuals: root.Window.window
+                                    && String(root.Window.window.windowKey || "") !== "main"
 
     Loader {
         id: rippleLoader

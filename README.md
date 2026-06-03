@@ -1,21 +1,35 @@
 # Python PySide6 Frameless
 
-一个面向真实桌面环境的 PySide6 + QML 无边框窗口模板。它不是只在 Windows 11 上看起来正常的演示项目，而是专门处理 Windows 10、虚拟机、远程显示、Linux 桌面主题差异下的圆角、阴影和原生窗口行为。
+一个面向真实桌面环境的 PySide6 + QML 跨平台无边框窗口模板。
 
-项目目标很明确：**窗口四个角都要圆，拖拽、缩放、贴边、最大化和复原要尽量接近系统原生行为，业务界面仍然保持 QML 的现代观感。**
+它不是只在 Windows 11 上看起来正常的演示项目，而是专门处理 Windows 10、虚拟机、远程显示、Linux 桌面主题差异下的圆角、阴影和原生窗口行为。目标很明确：窗口四个角都要统一圆角，拖拽、缩放、贴边、最大化和复原尽量接近系统原生体验，业务界面仍保持 QML 的现代观感。
+
+## 界面预览
+
+日间样式：
+
+![light](resources/examples/light.jpg)
+
+![light other](resources/examples/light-other.jpg)
+
+夜间样式：
+
+![dark](resources/examples/dark.jpg)
+
+![dark other](resources/examples/dark-other.jpg)
 
 ## 主要特点
 
-- **Windows + Linux 跨平台无边框窗口**：主窗口、子窗口、标题栏、页面、托盘、设置、主题和弹窗都按模块拆分，可直接作为新桌面软件的基础壳。
-- **四角圆角策略**：Windows 11 正常环境优先使用系统圆角和系统阴影；Windows 10、虚拟机、Basic/Remote Display、Linux 不可信四角圆角环境使用自定义圆角窗口。
-- **原生窗口行为优先**：拖拽、边缘缩放、左右半屏、上下贴边、最大化、复原、系统按钮命中区域尽量交给 native/QWindowKit 管理，避免 QML 几何补丁破坏体验。
-- **外置自定义阴影**：需要自定义阴影时，不把阴影塞进内容 HWND 内部，而是用独立透明、鼠标穿透的 helper 窗口垫在后面。这样真实窗口几何仍然代表可见内容边界。
-- **C++ 处理高频窗口工作**：窗口 hit-test、native 注册、外置阴影同步等高频路径由 C++/QWindowKit 处理；Python 负责配置、托盘、存储和业务桥接；QML 负责界面表现。
-- **低配电脑优化方向**：页面通过 Loader 懒加载，图标使用静态 PNG，后续可通过开发者/低内存模式减少子窗口隐藏对象、Canvas/FBO 和常驻缓存。
+- **Windows + Linux 跨平台无边框窗口**：主窗口、子窗口、标题栏、页面、托盘、设置、主题和弹窗都按模块拆分，可作为桌面软件基础壳复用。
+- **四角圆角策略**：Windows 11 正常环境优先使用系统圆角和系统阴影；Windows 10、虚拟机、Basic/Remote Display、Linux 不可信四角圆角环境使用自定义圆角窗口和阴影策略。
+- **原生窗口行为优先**：拖拽、边缘缩放、左右半屏、上下贴边、最大化、复原和系统按钮命中区域尽量交给 native/QWindowKit 管理，避免 QML 几何补丁破坏体验。
+- **外置自定义阴影**：需要自定义阴影时，不把阴影像素塞进内容窗口内部，而是使用独立透明、鼠标穿透的 helper 窗口垫在后面，真实窗口几何仍代表内容边界。
+- **C++ 处理高频窗口工作**：hit-test、native 注册、外置阴影同步等高频路径由 C++/QWindowKit 处理；Python 负责配置、托盘、存储和业务桥接；QML 负责界面表现。
+- **低配电脑优化方向**：页面通过 Loader 按需加载，未访问分页不会提前创建；图标使用静态 PNG；关闭子窗口后尽量释放对象和缓存。当前主窗口源码运行内存约 96MB，后续会继续加入组件和性能优化。
 
-## 运行环境
+## 运行方式
 
-当前仓库自带 Windows x64 / Python 3.10 / PySide6 6.11 对应的 native 预编译模块。普通用户不需要安装 CMake 或 Visual Studio 就能运行。
+当前仓库自带 Windows x64 / Python 3.10 / PySide6 6.11 对应的 native 预编译模块。普通用户不需要安装 CMake 或 Visual Studio 即可运行。
 
 ```bash
 pip install -r requirements.txt
@@ -57,12 +71,17 @@ app/cpp/frameless_native/           C++ native 窗口模块源码
 app/native/prebuilt/                已编译 FramelessNative Qt Quick 模块
 qml/window/                         AppWindow、TitleBar、窗口壳和阴影 QML
 qml/controls/                       通用控件
-qml/layout/                         导航和页面宿主
+qml/layout/                         导航和页面容器
 qml/pages/                          示例页面
-resources/                          图标、阴影、托盘图标等资源
+resources/icons/                    静态图标
+resources/images/                   阴影、色轮等运行资源
+resources/examples/                 README 示例截图
+references/                         视觉参考图，仅供界面改进时参考
 scripts/                            运行、检查和辅助脚本
 third_party/qwindowkit/             vendored QWindowKit 源码
 ```
+
+`references/` 中的图片来自本地设计参考文件夹，只作为后续样式改进参考，不代表当前界面完全照搬。
 
 ## QWindowKit 来源
 
@@ -70,7 +89,7 @@ native 无边框行为基于 QWindowKit：
 
 https://github.com/stdware/qwindowkit
 
-本仓库暂时把 QWindowKit 源码放在 `third_party/qwindowkit/`，方便普通用户 clone 后直接编译，不需要额外初始化 submodule。当前版本包含针对本模板右侧/底部/角落 resize 命中区域的本地调整；后续升级 QWindowKit 时需要重新核对这些补丁。
+本仓库暂时把 QWindowKit 源码放在 `third_party/qwindowkit/`，方便普通用户 clone 后直接编译，不需要额外初始化 submodule。当前版本包含针对本模板右侧、底部、角落 resize 命中区域的本地调整；后续升级 QWindowKit 时需要重新核对这些补丁。
 
 ## Native 预编译模块
 
@@ -128,6 +147,7 @@ App.tray.centerMainWindow()
 - `app/cpp/frameless_native/build-*` 编译过程目录
 - `*.log`、`build_output.txt`、`run_smoke.*`
 - `.vscode/` 等本地编辑器配置
+- native 链接中间产物 `.lib`、`.exp`
 
 仓库应保留：
 
@@ -140,3 +160,5 @@ App.tray.centerMainWindow()
 ## 当前状态
 
 这是一个可复用桌面软件壳，不是最终业务产品。重点在于把无边框窗口最容易出问题的部分处理稳：跨系统圆角、阴影、贴边、缩放、最大化复原、主题和多窗口基础设施。
+
+软件样式、控件动态、主题美化均为自行设计。有些页面设计还不够专业，欢迎大家留言提出建议或提交改进。后续会不断加入新的组件、页面示例和性能优化。如果这个项目对你有帮助，欢迎点个 Star。

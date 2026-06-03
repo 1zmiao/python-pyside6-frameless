@@ -41,10 +41,9 @@ def main() -> int:
     # by Windows/QWindowKit, but let Qt paint on its own frame cadence.
     os.environ.setdefault("QWK_DISABLE_FLICKER_WORKAROUND", "1")
 
-    # Keep transparent rounded QML windows antialiased without the high memory
-    # cost of 4x MSAA on every top-level Qt Quick scene graph.
+    # Keep transparent rounded QML windows antialiased without allocating multisample render targets on every top-level Qt Quick scene graph.
     fmt = QSurfaceFormat()
-    fmt.setSamples(2)
+    fmt.setSamples(0)
     QSurfaceFormat.setDefaultFormat(fmt)
 
     app = QApplication(sys.argv)

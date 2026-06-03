@@ -14,9 +14,9 @@ Item {
         ResizableSideNav {
             id: sideNav
             height: parent.height
-            width: (typeof App !== "undefined" && App && App.settings)
+            width: Math.round((typeof App !== "undefined" && App && App.settings)
                    ? Math.max(0, Math.min(App.settings.valueOr("layout/navWidth", Core.Theme.metrics.navWidthDefault), Core.Theme.metrics.navWidthMax))
-                   : Core.Theme.metrics.navWidthDefault
+                   : Core.Theme.metrics.navWidthDefault)
             cornerRadius: root.windowObject ? root.windowObject.cornerRadius : Core.Theme.radius.window
             onCurrentPageChanged: pageHost.showPage(currentPage)
         }

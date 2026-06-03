@@ -8,6 +8,9 @@ AppWindow {
     autoRestoreWindowState: false
     autoShow: false
     showNavToggle: false
+    showColorButton: false
+    showThemeButton: false
+    showPinButton: false
     title: pageTitle
     width: 760
     height: 520

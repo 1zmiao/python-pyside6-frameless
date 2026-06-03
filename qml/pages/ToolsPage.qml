@@ -11,7 +11,7 @@ Item {
             height: Math.max(Core.Theme.dp(220), toolContent.implicitHeight + Core.Theme.dp(36))
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
-            border.color: Core.Theme.color.outlineAccent
+            border.color: Core.Theme.color.cardOutline
 
             BackgroundRipple { radius: parent.radius }
             CardAccentGlow { radius: parent.radius }

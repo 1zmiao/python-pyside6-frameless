@@ -1,9 +1,16 @@
-﻿import QtQuick
+import QtQuick
+import QtQuick.Window
 import "../core" as Core
 import "../controls"
 
 Item {
     id: root
+
+    readonly property real devicePixelRatio: Math.max(1.0, (root.Window.window && root.Window.window.screen) ? root.Window.window.screen.devicePixelRatio : Screen.devicePixelRatio)
+    readonly property real physicalPixel: 1.0 / devicePixelRatio
+    function snapToPhysicalPixel(value) {
+        return Math.round(value / physicalPixel) * physicalPixel
+    }
 
     property int expandedWidth: Core.Theme.metrics.navWidthDefault
     property int compactWidth: Core.Theme.metrics.navIconWidth
@@ -16,7 +23,7 @@ Item {
     function persistWidthLater() {
         Qt.callLater(function() {
             if (typeof App !== "undefined" && App && App.settings)
-                App.settings.setValue("layout/navWidth", root.width)
+                App.settings.setValue("layout/navWidth", Math.round(root.width))
         })
     }
 
@@ -28,7 +35,7 @@ Item {
     }
 
     function restore() {
-        width = restoreWidth > compactWidth ? restoreWidth : expandedWidth
+        width = snapToPhysicalPixel(restoreWidth > compactWidth ? restoreWidth : expandedWidth)
         persistWidthLater()
     }
 
@@ -43,10 +50,20 @@ Item {
         if (next < minWidthBeforeHidden)
             width = 0
         else if (next < compactWidth)
-            width = compactWidth
+            width = snapToPhysicalPixel(compactWidth)
         else
-            width = Math.max(compactWidth, Math.min(Core.Theme.dp(260), next))
+            width = snapToPhysicalPixel(Math.max(compactWidth, Math.min(Core.Theme.dp(260), next)))
     }
+
+    function snapCurrentWidthLater() {
+        Qt.callLater(function() {
+            if (root.width > 0)
+                root.width = snapToPhysicalPixel(root.width)
+        })
+    }
+
+    onDevicePixelRatioChanged: snapCurrentWidthLater()
+    Component.onCompleted: snapCurrentWidthLater()
 
     Item {
         id: bgLayer
@@ -57,6 +74,25 @@ Item {
         Rectangle { anchors.fill: parent; radius: root.cornerRadius; antialiasing: true; color: Core.Theme.color.sidebar }
         Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; height: root.cornerRadius + 2; color: Core.Theme.color.sidebar }
         Rectangle { anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: parent.right; width: root.cornerRadius + 2; color: Core.Theme.color.sidebar }
+    }
+
+    Image {
+        id: sideEdgeGlow
+        z: 0.5
+        width: 34
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.right: parent.right
+        sourceSize.width: 34
+        sourceSize.height: 768
+        source: "image://cardaccent/side/" + Core.Theme.mode + "/" + String(Core.Theme.primary).replace("#", "") + "/" + root.cornerRadius + "/34x768"
+        fillMode: Image.Stretch
+        smooth: true
+        asynchronous: false
+        mipmap: false
+        cache: true
+        visible: root.width > 0
+        opacity: Core.Theme.mode === "dark" ? 0.72 : 0.62
     }
 
     Column {
@@ -100,12 +136,13 @@ Item {
 
     Rectangle {
         id: handle
-        width: 4
+        width: 5
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.right: parent.right
         color: "transparent"
         visible: root.width > 0
+
 
         DragHandler {
             target: null
@@ -134,20 +171,21 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: Core.Theme.radius.button
-            color: item.selected ? Core.Theme.color.navActive : (mouse.pressed ? Core.Theme.color.controlPressed : (mouse.containsMouse ? Core.Theme.color.controlHover : "transparent"))
-            border.color: item.selected ? Core.Theme.primaryOutline : "transparent"
+            color: item.selected ? (Core.Theme.mode === "dark" ? Core.Theme.color.navActiveStrong : Core.Theme.color.navActive) : (mouse.pressed ? Core.Theme.color.controlPressed : (mouse.containsMouse ? Core.Theme.color.controlHover : "transparent"))
+            border.color: item.selected ? (Core.Theme.mode === "dark" ? Core.Theme.alpha(Qt.lighter(Core.Theme.primary, 1.8), 0.92) : Core.Theme.primaryOutline) : "transparent"
             border.width: item.selected ? 1 : 0
         }
 
         Rectangle {
             visible: item.selected && !item.compact
-            width: 3
-            height: Core.Theme.dp(18)
+            width: Core.Theme.mode === "dark" ? 4 : 3
+            height: Core.Theme.dp(Core.Theme.mode === "dark" ? 21 : 18)
             radius: 2
             anchors.left: parent.left
             anchors.leftMargin: 4
             anchors.verticalCenter: parent.verticalCenter
-            color: Core.Theme.primary
+            color: Core.Theme.mode === "dark" ? Qt.lighter(Core.Theme.primary, 1.85) : Core.Theme.primary
+            opacity: Core.Theme.mode === "dark" ? 1.0 : 0.95
         }
 
         IconImage {

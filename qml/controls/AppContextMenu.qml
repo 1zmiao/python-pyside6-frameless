@@ -80,7 +80,7 @@ Item {
         antialiasing: true
         color: Core.Theme.color.card
         border.width: 1
-        border.color: Core.Theme.color.outlineAccent
+        border.color: Core.Theme.mode === "dark" ? Core.Theme.alpha(Qt.lighter(Core.Theme.primary, 1.65), 0.88) : Core.Theme.color.outlineAccent
 
         Column {
             id: menuColumn

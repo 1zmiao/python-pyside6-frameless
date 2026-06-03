@@ -46,7 +46,7 @@ Item {
             height: settingsColumn.implicitHeight + Core.Theme.dp(36)
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
-            border.color: Core.Theme.color.outlineAccent
+            border.color: Core.Theme.color.cardOutline
             antialiasing: true
             Behavior on color { ColorAnimation { duration: 150 } }
 
@@ -195,7 +195,7 @@ Item {
             height: developerColumn.implicitHeight + Core.Theme.dp(36)
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
-            border.color: Core.Theme.color.outlineAccent
+            border.color: Core.Theme.color.cardOutline
             antialiasing: true
             Behavior on color { ColorAnimation { duration: 150 } }
 
@@ -340,7 +340,7 @@ Item {
 
                     Text {
                         width: parent.width
-                        text: "当前生效：" + (root.effectiveProfile() === "low-memory" ? "低内存" : "普通") + "。自动模式只在 1-2G 级别内存设备上进入低内存策略；这台电脑可用“低内存模拟”强制测试。"
+                        text: "当前生效：" + (root.effectiveProfile() === "low-memory" ? "低内存" : "普通") + "。自动模式只在 4GB 及以下内存设备上进入低内存策略；这台电脑可用“低内存模拟”强制测试。"
                         color: Core.Theme.color.mutedText
                         font.pixelSize: Core.Theme.fontSize.caption
                         font.family: Core.Theme.appFontFamily

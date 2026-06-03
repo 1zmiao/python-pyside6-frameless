@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import ctypes
+import gc
+import sys
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Property, Slot
@@ -19,6 +22,7 @@ class AppBridge(QObject):
     def __init__(self, app, engine: QQmlApplicationEngine, qml_dir: Path, parent=None, native_window_shell: bool = False):
         super().__init__(parent)
         self._app = app
+        self._engine = engine
         self._settings = SettingsStore()
         self._secrets = SecretStore(password=None)
         self._performance = PerformanceController(self._settings, parent=self)
@@ -64,6 +68,23 @@ class AppBridge(QObject):
     @Property(QObject, constant=True)
     def tray(self):
         return self._tray
+
+
+    @Slot()
+    def trimMemory(self) -> None:
+        try:
+            self._engine.trimComponentCache()
+        except Exception:
+            pass
+        try:
+            self._performance.collectGarbage()
+        except Exception:
+            gc.collect()
+        if sys.platform == "win32":
+            try:
+                ctypes.windll.psapi.EmptyWorkingSet(ctypes.windll.kernel32.GetCurrentProcess())
+            except Exception:
+                pass
 
     @Slot()
     def shutdown(self) -> None:
