@@ -6,9 +6,13 @@
 
 ## 界面预览
 
-| 夜间样式 | 夜间样式（更多控件） |
-| --- | --- |
-| ![dark](resources/examples/dark.jpg) | ![dark other](resources/examples/dark-other.jpg) |
+夜间样式：
+
+![dark](resources/examples/dark.jpg)
+
+夜间样式（更多控件）：
+
+![dark other](resources/examples/dark-other.jpg)
 
 | 日间样式 | 日间样式（更多控件） |
 | --- | --- |
