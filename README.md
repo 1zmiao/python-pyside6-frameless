@@ -6,17 +6,15 @@
 
 ## 界面预览
 
-日间样式：
+| 夜间样式 | 夜间样式（更多控件） |
+| --- | --- |
+| ![dark](resources/examples/dark.jpg) | ![dark other](resources/examples/dark-other.jpg) |
 
-![light](resources/examples/light.jpg)
+| 日间样式 | 日间样式（更多控件） |
+| --- | --- |
+| ![light](resources/examples/light.jpg) | ![light other](resources/examples/light-other.jpg) |
 
-![light other](resources/examples/light-other.jpg)
-
-夜间样式：
-
-![dark](resources/examples/dark.jpg)
-
-![dark other](resources/examples/dark-other.jpg)
+当前源码运行主窗口内存占用约 **96MB**。后续会继续加入新的组件示例和性能优化。
 
 ## 主要特点
 
