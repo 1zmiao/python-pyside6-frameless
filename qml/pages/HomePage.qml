@@ -35,7 +35,8 @@ Item {
             radius: Core.Theme.radius.card
             color: Core.Theme.color.hero
             border.color: Core.Theme.color.cardOutline
-            Behavior on color { ColorAnimation { duration: 150 } }
+            Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+            Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
 
             BackgroundRipple { radius: parent.radius }
             CardAccentGlow { radius: parent.radius }
@@ -58,6 +59,7 @@ Item {
                     width: parent.width
                     text: "PySide6/QML 负责界面美观，C++/QWindowKit 接管无边框拖拽、缩放、贴边和最大化。Windows 与 Linux 尽量保留原生窗口手感，同时保证四个角统一圆角。"
                     wrapMode: Text.WordWrap
+                    lineHeight: Core.Theme.bodyLineHeight
                     color: Core.Theme.color.mutedText
                     font.pixelSize: Core.Theme.fontSize.body
                     font.family: Core.Theme.appFontFamily
@@ -66,6 +68,7 @@ Item {
                     width: parent.width
                     text: "Win11 优先使用系统圆角与阴影；Win10、虚拟机和非完整圆角桌面使用外置自定义阴影，避免阴影像素影响真实窗口尺寸。"
                     wrapMode: Text.WordWrap
+                    lineHeight: Core.Theme.bodyLineHeight
                     color: Core.Theme.color.mutedText
                     font.pixelSize: Core.Theme.fontSize.caption
                     font.family: Core.Theme.appFontFamily
@@ -79,7 +82,8 @@ Item {
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
             border.color: Core.Theme.color.cardOutline
-            Behavior on color { ColorAnimation { duration: 150 } }
+            Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+            Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
 
             BackgroundRipple { radius: parent.radius }
             CardAccentGlow { radius: parent.radius }
@@ -98,13 +102,14 @@ Item {
                     font.pixelSize: Core.Theme.fontSize.body
                     font.family: Core.Theme.appFontFamily
                     wrapMode: Text.WordWrap
+                    lineHeight: Core.Theme.bodyLineHeight
                     text: "普通设置进入 user_data/config/settings.json，加密字段进入 user_data/secure/secrets.bin。输入框会自动保存，统一保存入口保留在设置页。"
                 }
 
                 AppTextField {
                     id: settingInput
                     width: parent.width
-                    placeholderText: "普通设置文本"
+                    placeholderText: "普通文本"
                     storageKey: "demo/input"
                     autoLoad: true
                 }
@@ -112,9 +117,9 @@ Item {
                 SecureTextField {
                     id: secretInput
                     width: parent.width
-                    placeholderText: "需要加密保存的文本"
+                    placeholderText: "加密文本"
                     storageKey: "demo/token"
-                    text: "abc123"
+                    text: "Hello World"
                     autoLoad: true
                 }
 
@@ -136,7 +141,8 @@ Item {
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
             border.color: Core.Theme.color.cardOutline
-            Behavior on color { ColorAnimation { duration: 150 } }
+            Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+            Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
 
             BackgroundRipple { radius: parent.radius }
             CardAccentGlow { radius: parent.radius }
@@ -153,6 +159,7 @@ Item {
                     color: Core.Theme.color.mutedText
                     font.pixelSize: Core.Theme.fontSize.body
                     wrapMode: Text.WordWrap
+                    lineHeight: Core.Theme.bodyLineHeight
                     text: "页面按需加载；低内存模式会减少关闭后的驻留对象，并把子窗口里可选的视觉效果逐步降级。完整窗口行为和阴影策略不会随模式热重建。"
                 }
                 AppCheckBox { text: "示例开关会保存到普通配置"; storageKey: "demo/switch"; autoLoad: true }

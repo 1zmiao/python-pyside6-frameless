@@ -19,6 +19,54 @@ Item {
     property string currentPage: "home"
     property real startWidth: width
     property int cornerRadius: Core.Theme.radius.window
+    property string sideGlowModeKey: Core.Theme.mode
+    property string sideGlowHex: String(Core.Theme.primary).replace("#", "")
+    property string currentSideGlowSource: sideGlowSource(sideGlowModeKey, sideGlowHex)
+    property string pendingSideGlowSource: ""
+    property bool sideGlowSwapping: false
+
+    function sideGlowSource(mode, hex) {
+        return "image://cardaccent/side/" + mode + "/" + hex + "/" + root.cornerRadius + "/34x768"
+    }
+
+    function refreshSideGlow() {
+        if (!sideGlowSwapping)
+            currentSideGlowSource = sideGlowSource(sideGlowModeKey, sideGlowHex)
+    }
+
+    function swapSideGlow(mode) {
+        const nextSource = sideGlowSource(mode, sideGlowHex)
+        if (nextSource === currentSideGlowSource)
+            return
+        sideGlowSwapping = true
+        pendingSideGlowSource = nextSource
+        nextSideEdgeGlow.opacity = 0
+        nextSideEdgeGlow.source = nextSource
+        sideGlowFadeOut.stop()
+        sideGlowFadeIn.stop()
+        sideGlowFadeOut.from = sideEdgeGlow.opacity
+        sideGlowFadeOut.to = 0
+        sideGlowFadeIn.from = 0
+        sideGlowFadeIn.to = sideGlowOpacityForMode(mode)
+        sideGlowFadeOut.start()
+        sideGlowFadeIn.start()
+    }
+
+    function finishSideGlowSwap() {
+        if (!sideGlowSwapping)
+            return
+        sideGlowModeKey = Core.Theme.mode
+        currentSideGlowSource = pendingSideGlowSource.length > 0 ? pendingSideGlowSource : sideGlowSource(sideGlowModeKey, sideGlowHex)
+        sideEdgeGlow.opacity = sideGlowOpacityForMode(sideGlowModeKey)
+        nextSideEdgeGlow.opacity = 0
+        nextSideEdgeGlow.source = ""
+        pendingSideGlowSource = ""
+        sideGlowSwapping = false
+    }
+
+    function sideGlowOpacityForMode(mode) {
+        return mode === "dark" ? 0.72 : 0.62
+    }
 
     function persistWidthLater() {
         Qt.callLater(function() {
@@ -63,6 +111,8 @@ Item {
     }
 
     onDevicePixelRatioChanged: snapCurrentWidthLater()
+    onSideGlowHexChanged: refreshSideGlow()
+    onCornerRadiusChanged: refreshSideGlow()
     Component.onCompleted: snapCurrentWidthLater()
 
     Item {
@@ -71,9 +121,37 @@ Item {
         visible: root.width > 0
         clip: true
 
-        Rectangle { anchors.fill: parent; radius: root.cornerRadius; antialiasing: true; color: Core.Theme.color.sidebar }
-        Rectangle { anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top; height: root.cornerRadius + 2; color: Core.Theme.color.sidebar }
-        Rectangle { anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: parent.right; width: root.cornerRadius + 2; color: Core.Theme.color.sidebar }
+        Rectangle {
+            anchors.fill: parent
+            radius: root.cornerRadius
+            antialiasing: true
+            color: Core.Theme.color.sidebar
+            Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+        }
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: root.cornerRadius + 2
+            color: Core.Theme.color.sidebar
+            Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+        }
+        Rectangle {
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.right: parent.right
+            width: root.cornerRadius + 2
+            color: Core.Theme.color.sidebar
+            Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+        }
+
+        BackgroundRipple {
+            anchors.fill: parent
+            z: 1
+            radius: root.cornerRadius
+            colorRole: "sidebar"
+            opacityScale: 0.82
+        }
     }
 
     Image {
@@ -85,14 +163,56 @@ Item {
         anchors.right: parent.right
         sourceSize.width: 34
         sourceSize.height: 768
-        source: "image://cardaccent/side/" + Core.Theme.mode + "/" + String(Core.Theme.primary).replace("#", "") + "/" + root.cornerRadius + "/34x768"
+        source: root.currentSideGlowSource
         fillMode: Image.Stretch
         smooth: true
         asynchronous: false
         mipmap: false
-        cache: true
+        cache: false
+        retainWhileLoading: true
         visible: root.width > 0
-        opacity: Core.Theme.mode === "dark" ? 0.72 : 0.62
+        opacity: root.sideGlowOpacityForMode(root.sideGlowModeKey)
+    }
+
+    Image {
+        id: nextSideEdgeGlow
+        z: 0.55
+        width: 34
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.right: parent.right
+        sourceSize.width: 34
+        sourceSize.height: 768
+        fillMode: Image.Stretch
+        smooth: true
+        asynchronous: false
+        mipmap: false
+        cache: false
+        retainWhileLoading: true
+        visible: root.width > 0 && (opacity > 0.001 || String(source).length > 0)
+        opacity: 0
+    }
+
+    NumberAnimation {
+        id: sideGlowFadeOut
+        target: sideEdgeGlow
+        property: "opacity"
+        duration: Core.Theme.animatedColorTransitionMs
+        easing.type: Easing.InOutCubic
+    }
+
+    NumberAnimation {
+        id: sideGlowFadeIn
+        target: nextSideEdgeGlow
+        property: "opacity"
+        duration: Core.Theme.animatedColorTransitionMs
+        easing.type: Easing.InOutCubic
+        onFinished: root.finishSideGlowSwap()
+    }
+
+    Connections {
+        target: (typeof App !== "undefined" && App && App.theme) ? App.theme : null
+        function onModeChanged(mode) { root.swapSideGlow(mode) }
     }
 
     Column {
@@ -107,10 +227,10 @@ Item {
 
         Repeater {
             model: [
-                { "page": "home", "text": "首页", "icon": "home" },
-                { "page": "tools", "text": "工具", "icon": "tools" },
-                { "page": "update", "text": "更新", "icon": "update" },
-                { "page": "about", "text": "关于", "icon": "about" }
+                { "page": "home", "text": "\u9996\u9875", "icon": "home" },
+                { "page": "tools", "text": "\u5de5\u5177", "icon": "tools" },
+                { "page": "update", "text": "\u66f4\u65b0", "icon": "update" },
+                { "page": "about", "text": "\u5173\u4e8e", "icon": "about" }
             ]
 
             delegate: NavItem {
@@ -131,7 +251,7 @@ Item {
         height: root.width > 0 ? Core.Theme.metrics.navItemHeight : 0
         visible: root.width > 0
 
-        NavItem { anchors.fill: parent; page: "settings"; label: "设置"; iconName: "settings" }
+        NavItem { anchors.fill: parent; page: "settings"; label: "\u8bbe\u7f6e"; iconName: "settings" }
     }
 
     Rectangle {
@@ -171,21 +291,25 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: Core.Theme.radius.button
-            color: item.selected ? (Core.Theme.mode === "dark" ? Core.Theme.color.navActiveStrong : Core.Theme.color.navActive) : (mouse.pressed ? Core.Theme.color.controlPressed : (mouse.containsMouse ? Core.Theme.color.controlHover : "transparent"))
-            border.color: item.selected ? (Core.Theme.mode === "dark" ? Core.Theme.alpha(Qt.lighter(Core.Theme.primary, 1.8), 0.92) : Core.Theme.primaryOutline) : "transparent"
+            color: item.selected ? (Core.Theme.mode === "dark" ? Core.Theme.color.navActiveStrong : Core.Theme.color.navActive) : (mouse.pressed ? Core.Theme.color.controlPressed : (mouse.containsMouse ? Core.Theme.color.controlHover : Core.Theme.alpha(Core.Theme.color.controlHover, 0)))
+            border.color: item.selected ? (Core.Theme.mode === "dark" ? Core.Theme.alpha(Qt.lighter(Core.Theme.primary, 1.8), 0.92) : Core.Theme.primaryOutline) : Core.Theme.alpha(Core.Theme.primaryOutline, 0)
             border.width: item.selected ? 1 : 0
+            Behavior on color { ColorAnimation { duration: item.selected ? Core.Theme.animatedColorTransitionMs : Core.Theme.controlTransitionMs; easing.type: Easing.InOutCubic } }
+            Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
         }
 
         Rectangle {
             visible: item.selected && !item.compact
-            width: Core.Theme.mode === "dark" ? 4 : 3
-            height: Core.Theme.dp(Core.Theme.mode === "dark" ? 21 : 18)
+            width: 4
+            height: Core.Theme.dp(20)
             radius: 2
             anchors.left: parent.left
             anchors.leftMargin: 4
             anchors.verticalCenter: parent.verticalCenter
             color: Core.Theme.mode === "dark" ? Qt.lighter(Core.Theme.primary, 1.85) : Core.Theme.primary
             opacity: Core.Theme.mode === "dark" ? 1.0 : 0.95
+            Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+            Behavior on opacity { NumberAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
         }
 
         IconImage {
@@ -209,6 +333,7 @@ Item {
             font.family: Core.Theme.appFontFamily
             font.bold: item.selected
             elide: Text.ElideRight
+            Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
         }
 
         MouseArea { id: mouse; anchors.fill: parent; hoverEnabled: true; onClicked: root.currentPage = item.page }

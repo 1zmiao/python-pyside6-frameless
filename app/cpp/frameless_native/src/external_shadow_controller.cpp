@@ -18,6 +18,10 @@
 #    include <windows.h>
 #endif
 
+#if defined(FRAMELESS_NATIVE_HAS_XCB)
+#    include <xcb/xcb.h>
+#endif
+
 #ifdef Q_OS_WIN
 namespace {
 constexpr wchar_t kNativeShadowClassName[] = L"FramelessNativeShadowWindow";
@@ -25,6 +29,10 @@ constexpr wchar_t kNativeShadowClassName[] = L"FramelessNativeShadowWindow";
 LRESULT CALLBACK nativeShadowWndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
     if (message == WM_NCHITTEST)
         return HTTRANSPARENT;
+    if (message == WM_MOUSEACTIVATE)
+        return MA_NOACTIVATEANDEAT;
+    if (message == WM_SETFOCUS)
+        return 0;
     return DefWindowProcW(hwnd, message, wParam, lParam);
 }
 
@@ -73,6 +81,59 @@ bool sizingEdgeTouchesLeft(int edge) {
 
 bool sizingEdgeTouchesTop(int edge) {
     return edge == WMSZ_TOP || edge == WMSZ_TOPLEFT || edge == WMSZ_TOPRIGHT;
+}
+}
+#endif
+
+#if defined(FRAMELESS_NATIVE_HAS_XCB)
+namespace {
+xcb_connection_t *sharedXcbConnection() {
+    static xcb_connection_t *connection = nullptr;
+    static bool initialized = false;
+    if (!initialized) {
+        initialized = true;
+        connection = xcb_connect(nullptr, nullptr);
+        if (connection && xcb_connection_has_error(connection)) {
+            xcb_disconnect(connection);
+            connection = nullptr;
+        }
+    }
+    return connection;
+}
+
+bool canUseXcbWindowOps() {
+    return QGuiApplication::platformName().compare(QStringLiteral("xcb"), Qt::CaseInsensitive) == 0
+           && sharedXcbConnection();
+}
+
+void configureXcbWindow(WId windowId, const QRect &rect) {
+    xcb_connection_t *connection = sharedXcbConnection();
+    if (!connection || !rect.isValid())
+        return;
+    const uint32_t values[] = {
+        static_cast<uint32_t>(rect.x()),
+        static_cast<uint32_t>(rect.y()),
+        static_cast<uint32_t>(qMax(1, rect.width())),
+        static_cast<uint32_t>(qMax(1, rect.height())),
+    };
+    constexpr uint16_t mask = XCB_CONFIG_WINDOW_X
+                              | XCB_CONFIG_WINDOW_Y
+                              | XCB_CONFIG_WINDOW_WIDTH
+                              | XCB_CONFIG_WINDOW_HEIGHT;
+    xcb_configure_window(connection, static_cast<xcb_window_t>(windowId), mask, values);
+}
+
+void stackXcbWindowBelow(WId shadowId, WId targetId) {
+    xcb_connection_t *connection = sharedXcbConnection();
+    if (!connection || !shadowId || !targetId || shadowId == targetId)
+        return;
+    const uint32_t values[] = {
+        static_cast<uint32_t>(targetId),
+        XCB_STACK_MODE_BELOW,
+    };
+    constexpr uint16_t mask = XCB_CONFIG_WINDOW_SIBLING | XCB_CONFIG_WINDOW_STACK_MODE;
+    xcb_configure_window(connection, static_cast<xcb_window_t>(shadowId), mask, values);
+    xcb_flush(connection);
 }
 }
 #endif
@@ -187,7 +248,7 @@ void ExternalShadowController::syncShadowWindow(QObject *shadowWindow, QObject *
     registerShadowWindow(shadowWindow, targetWindow, shadowMargin);
 }
 
-void ExternalShadowController::setNativeShadow(QObject *targetWindow, bool enabled, const QUrl &assetUrl, int shadowMargin, qreal opacity, int cornerRadius) {
+void ExternalShadowController::setNativeShadow(QObject *targetWindow, bool enabled, const QUrl &assetUrl, int shadowMargin, qreal opacity, int cornerRadius, const QColor &centerColor) {
     QWindow *target = asWindow(targetWindow);
     if (!target)
         return;
@@ -196,19 +257,23 @@ void ExternalShadowController::setNativeShadow(QObject *targetWindow, bool enabl
     const WId targetId = target->winId();
     NativeShadowState &state = m_nativeShadowByTarget[targetId];
     state.target = target;
+    state.targetHwnd = targetId;
 
     const int nextMargin = qBound(0, shadowMargin, 128);
     const qreal nextOpacity = qBound<qreal>(0.0, opacity, 1.0);
     const int nextCornerRadius = qBound(0, cornerRadius, 128);
+    const QColor nextCenterColor = centerColor.isValid() ? centerColor.toRgb() : QColor();
     const bool needsRepaint = state.margin != nextMargin
                               || !qFuzzyCompare(state.opacity + 1.0, nextOpacity + 1.0)
                               || state.cornerRadius != nextCornerRadius
+                              || state.centerColor != nextCenterColor
                               || state.assetUrl != assetUrl;
 
     state.enabled = enabled;
     state.margin = nextMargin;
     state.opacity = nextOpacity;
     state.cornerRadius = nextCornerRadius;
+    state.centerColor = nextCenterColor;
 
     if (!enabled) {
         hideNativeShadow(state);
@@ -223,6 +288,56 @@ void ExternalShadowController::setNativeShadow(QObject *targetWindow, bool enabl
     syncNativeRegisteredShadow(targetId, true, needsRepaint);
 }
 
+void ExternalShadowController::setNativeShadowForHwnd(const QString &targetHwnd, bool enabled, const QUrl &assetUrl, int shadowMargin, qreal opacity, int cornerRadius, const QColor &centerColor) {
+#ifdef Q_OS_WIN
+    const WId targetId = parseHwnd(targetHwnd);
+    HWND hwnd = reinterpret_cast<HWND>(targetId);
+    if (!targetId || !IsWindow(hwnd))
+        return;
+    ensureNativeEventFilter();
+
+    NativeShadowState &state = m_nativeShadowByTarget[targetId];
+    state.target = nullptr;
+    state.targetHwnd = targetId;
+
+    const int nextMargin = qBound(0, shadowMargin, 128);
+    const qreal nextOpacity = qBound<qreal>(0.0, opacity, 1.0);
+    const int nextCornerRadius = qBound(0, cornerRadius, 128);
+    const QColor nextCenterColor = centerColor.isValid() ? centerColor.toRgb() : QColor();
+    const bool needsRepaint = state.margin != nextMargin
+                              || !qFuzzyCompare(state.opacity + 1.0, nextOpacity + 1.0)
+                              || state.cornerRadius != nextCornerRadius
+                              || state.centerColor != nextCenterColor
+                              || state.assetUrl != assetUrl;
+
+    state.enabled = enabled;
+    state.margin = nextMargin;
+    state.opacity = nextOpacity;
+    state.cornerRadius = nextCornerRadius;
+    state.centerColor = nextCenterColor;
+
+    if (!enabled) {
+        hideNativeShadow(state);
+        return;
+    }
+
+    if (!loadNativeShadowAsset(state, assetUrl)) {
+        hideNativeShadow(state);
+        return;
+    }
+
+    syncNativeRegisteredShadow(targetId, true, needsRepaint);
+#else
+    Q_UNUSED(targetHwnd)
+    Q_UNUSED(enabled)
+    Q_UNUSED(assetUrl)
+    Q_UNUSED(shadowMargin)
+    Q_UNUSED(opacity)
+    Q_UNUSED(cornerRadius)
+    Q_UNUSED(centerColor)
+#endif
+}
+
 void ExternalShadowController::syncNativeShadow(QObject *targetWindow) {
     QWindow *target = asWindow(targetWindow);
     if (!target)
@@ -230,11 +345,29 @@ void ExternalShadowController::syncNativeShadow(QObject *targetWindow) {
     syncNativeRegisteredShadow(target->winId(), true, false);
 }
 
+void ExternalShadowController::syncNativeShadowForHwnd(const QString &targetHwnd) {
+    const WId targetId = parseHwnd(targetHwnd);
+    if (!targetId)
+        return;
+    syncNativeRegisteredShadow(targetId, true, false);
+}
+
 void ExternalShadowController::destroyNativeShadow(QObject *targetWindow) {
     QWindow *target = asWindow(targetWindow);
     if (!target)
         return;
     const WId targetId = target->winId();
+    auto it = m_nativeShadowByTarget.find(targetId);
+    if (it == m_nativeShadowByTarget.end())
+        return;
+    destroyNativeShadowState(it.value());
+    m_nativeShadowByTarget.erase(it);
+}
+
+void ExternalShadowController::destroyNativeShadowForHwnd(const QString &targetHwnd) {
+    const WId targetId = parseHwnd(targetHwnd);
+    if (!targetId)
+        return;
     auto it = m_nativeShadowByTarget.find(targetId);
     if (it == m_nativeShadowByTarget.end())
         return;
@@ -253,6 +386,23 @@ bool ExternalShadowController::isSnapped(QObject *window) const {
     if (nativeIt != m_nativeShadowByTarget.constEnd() && (nativeIt.value().inSizeMove || nativeIt.value().sizing))
         return false;
     const QRect rect = nativeWindowRect(target);
+    const QRect area = nativeWorkAreaForRect(rect);
+    return rectLooksSnapped(rect, area);
+}
+
+bool ExternalShadowController::isSnappedHwnd(const QString &targetHwnd) const {
+    const WId targetId = parseHwnd(targetHwnd);
+    if (!targetId)
+        return false;
+#ifdef Q_OS_WIN
+    HWND hwnd = reinterpret_cast<HWND>(targetId);
+    if (!IsWindow(hwnd) || IsZoomed(hwnd))
+        return false;
+#endif
+    const auto nativeIt = m_nativeShadowByTarget.constFind(targetId);
+    if (nativeIt != m_nativeShadowByTarget.constEnd() && (nativeIt.value().inSizeMove || nativeIt.value().sizing))
+        return false;
+    const QRect rect = nativeTargetRect(targetId);
     const QRect area = nativeWorkAreaForRect(rect);
     return rectLooksSnapped(rect, area);
 }
@@ -362,6 +512,18 @@ QWindow *ExternalShadowController::asWindow(QObject *object) {
     return qobject_cast<QWindow *>(object);
 }
 
+quintptr ExternalShadowController::parseHwnd(const QString &value) {
+    bool ok = false;
+    const quintptr parsed = value.trimmed().toULongLong(&ok, 10);
+    return ok ? parsed : 0;
+}
+
+WId ExternalShadowController::nativeTargetId(const NativeShadowState &state) {
+    if (state.targetHwnd)
+        return state.targetHwnd;
+    return state.target ? state.target->winId() : 0;
+}
+
 QRect ExternalShadowController::nativeWindowRect(QWindow *window) {
     if (!window)
         return {};
@@ -371,23 +533,36 @@ QRect ExternalShadowController::nativeWindowRect(QWindow *window) {
 QRect ExternalShadowController::nativeTargetRect(QWindow *window) {
     if (!window)
         return {};
+    const QRect rect = nativeTargetRect(window->winId());
+    if (rect.isValid())
+        return rect;
+    return window->geometry();
+}
+
+QRect ExternalShadowController::nativeTargetRect(WId targetId) {
+    if (!targetId)
+        return {};
 #ifdef Q_OS_WIN
-    HWND hwnd = reinterpret_cast<HWND>(window->winId());
+    HWND hwnd = reinterpret_cast<HWND>(targetId);
     if (hwnd) {
         RECT rect = {};
         if (GetWindowRect(hwnd, &rect))
             return QRect(rect.left, rect.top, rect.right - rect.left, rect.bottom - rect.top);
     }
 #endif
-    return window->geometry();
+    return {};
 }
 
 int ExternalShadowController::dpiScaled(int value, QWindow *window) {
+    return dpiScaled(value, window ? window->winId() : 0);
+}
+
+int ExternalShadowController::dpiScaled(int value, WId targetId) {
     if (value <= 0)
         return 0;
 #ifdef Q_OS_WIN
-    if (window) {
-        HWND hwnd = reinterpret_cast<HWND>(window->winId());
+    if (targetId) {
+        HWND hwnd = reinterpret_cast<HWND>(targetId);
         if (hwnd) {
             if (auto getDpiForWindow = reinterpret_cast<UINT(WINAPI *)(HWND)>(
                     GetProcAddress(GetModuleHandleW(L"user32.dll"), "GetDpiForWindow"))) {
@@ -427,7 +602,7 @@ bool ExternalShadowController::rectLooksSnapped(const QRect &rect, const QRect &
         return true;
     if (sameHeight && rightAligned && (halfWidth || rightHalfish))
         return true;
-    return sameHeight;
+    return false;
 }
 
 void ExternalShadowController::ensureNativeEventFilter() {
@@ -449,7 +624,7 @@ void ExternalShadowController::syncNativeRegisteredShadow(WId targetId, bool sta
     auto it = m_nativeShadowByTarget.find(targetId);
     if (it == m_nativeShadowByTarget.end())
         return;
-    syncNativeRegisteredShadow(targetId, nativeTargetRect(it.value().target), stackBehind, forceRepaint);
+    syncNativeRegisteredShadow(targetId, nativeTargetRect(targetId), stackBehind, forceRepaint);
 }
 
 void ExternalShadowController::syncNativeRegisteredShadow(WId targetId, const QRect &targetRect, bool stackBehind, bool forceRepaint) {
@@ -487,13 +662,13 @@ void ExternalShadowController::destroyNativeShadowState(NativeShadowState &state
     HWND hwnd = reinterpret_cast<HWND>(state.shadowHwnd);
     if (hwnd && IsWindow(hwnd))
         DestroyWindow(hwnd);
-#endif
     if (state.cachedBitmap) {
         DeleteObject(reinterpret_cast<HBITMAP>(state.cachedBitmap));
-        state.cachedBitmap = 0;
-        state.cachedBitmapBits = nullptr;
-        state.cachedBitmapSize = QSize();
     }
+#endif
+    state.cachedBitmap = 0;
+    state.cachedBitmapBits = nullptr;
+    state.cachedBitmapSize = QSize();
     state.shadowHwnd = 0;
     state.shown = false;
     state.lastBitmapSize = QSize();
@@ -504,17 +679,19 @@ void ExternalShadowController::destroyNativeShadowState(NativeShadowState &state
 bool ExternalShadowController::ensureNativeShadowWindow(NativeShadowState &state) {
 #ifdef Q_OS_WIN
     HWND existing = reinterpret_cast<HWND>(state.shadowHwnd);
-    if (existing && IsWindow(existing))
+    if (existing && IsWindow(existing)) {
         return true;
+    }
     if (!ensureNativeShadowClass())
         return false;
 
     const DWORD exStyle = WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE;
-    HWND hwnd = CreateWindowExW(exStyle, kNativeShadowClassName, L"", WS_POPUP,
+    HWND hwnd = CreateWindowExW(exStyle, kNativeShadowClassName, L"", WS_POPUP | WS_DISABLED,
                                 0, 0, 1, 1, nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (!hwnd)
         return false;
 
+    EnableWindow(hwnd, FALSE);
     state.shadowHwnd = reinterpret_cast<quintptr>(hwnd);
     state.shown = false;
     return true;
@@ -572,18 +749,23 @@ bool ExternalShadowController::loadNativeShadowAsset(NativeShadowState &state, c
 }
 
 bool ExternalShadowController::shouldShowNativeShadow(const NativeShadowState &state) const {
-    if (!state.enabled || !state.target || state.source.isNull())
+    if (!state.enabled || state.source.isNull())
         return false;
-    if (state.target->visibility() == QWindow::Minimized
-        || state.target->visibility() == QWindow::Maximized
-        || state.target->visibility() == QWindow::FullScreen)
+    const WId targetId = nativeTargetId(state);
+    if (!targetId)
         return false;
+    if (state.target) {
+        if (state.target->visibility() == QWindow::Minimized
+            || state.target->visibility() == QWindow::Maximized
+            || state.target->visibility() == QWindow::FullScreen)
+            return false;
+    }
 #ifdef Q_OS_WIN
-    HWND hwnd = reinterpret_cast<HWND>(state.target->winId());
+    HWND hwnd = reinterpret_cast<HWND>(targetId);
     if (!hwnd || !IsWindow(hwnd) || !IsWindowVisible(hwnd) || IsIconic(hwnd) || IsZoomed(hwnd))
         return false;
 #endif
-    const QRect rect = nativeTargetRect(state.target);
+    const QRect rect = nativeTargetRect(targetId);
     return rect.isValid() && rect.width() > 0 && rect.height() > 0;
 }
 
@@ -635,8 +817,9 @@ QImage ExternalShadowController::renderNativeShadowBitmap(const NativeShadowStat
     QPainter painter(&result);
     painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
     painter.setOpacity(qBound<qreal>(0.0, state.opacity * opacityScale, 1.0));
-    if (dCenter.width() > 0 && dCenter.height() > 0 && sCenter.width() > 0 && sCenter.height() > 0)
+    if (dCenter.width() > 0 && dCenter.height() > 0 && sCenter.width() > 0 && sCenter.height() > 0) {
         painter.drawImage(dCenter, source, sCenter);
+    }
     painter.drawImage(dTopLeft, source, sTopLeft);
     if (dTop.width() > 0)
         painter.drawImage(dTop, source, sTop);
@@ -658,14 +841,15 @@ void ExternalShadowController::updateNativeShadowBitmap(NativeShadowState &state
     if (!targetRect.isValid() || !ensureNativeShadowWindow(state))
         return;
     HWND shadow = reinterpret_cast<HWND>(state.shadowHwnd);
-    HWND target = reinterpret_cast<HWND>(state.target ? state.target->winId() : 0);
+    const WId targetId = nativeTargetId(state);
+    HWND target = reinterpret_cast<HWND>(targetId);
     if (!shadow || !target || !IsWindow(shadow) || !IsWindow(target))
         return;
 
-    const int marginPx = dpiScaled(state.margin, state.target);
-    const int guardPx = dpiScaled(qBound(6, state.margin / 3, 14), state.target);
+    const int marginPx = dpiScaled(state.margin, targetId);
+    const int guardPx = dpiScaled(qBound(6, state.margin / 3, 14), targetId);
     const int innerOverlapDip = qBound(8, state.margin / 2, 24);
-    const int innerOverlapPx = dpiScaled(innerOverlapDip, state.target);
+    const int innerOverlapPx = dpiScaled(innerOverlapDip, targetId);
     const int outerPx = marginPx + guardPx;
     QRect shadowRect = targetRect.adjusted(-outerPx, -outerPx, outerPx, outerPx);
     const bool sizeChanged = state.lastBitmapSize != shadowRect.size();
@@ -692,15 +876,16 @@ void ExternalShadowController::updateNativeShadowBitmap(NativeShadowState &state
         stackBehind = true;
     }
 
-    const bool firstVisiblePaint = !state.everShown && !state.shown && !state.inSizeMove && !state.sizing;
-    if (firstVisiblePaint)
-        state.openingOpacityScale = 0.0;
-    const qreal opacityScale = (firstVisiblePaint || state.openingFadeScheduled) ? state.openingOpacityScale : 1.0;
+    if (state.openingFadeScheduled) {
+        state.openingFadeScheduled = false;
+        state.openingOpacityScale = 1.0;
+    }
+    const qreal opacityScale = 1.0;
 
     if (forceRepaint || sizeChanged || !state.shown) {
 
         const int liveCacheSlackPx = (state.inSizeMove || state.sizing)
-                                     ? dpiScaled(qBound(96, state.margin * 3, 192), state.target)
+                                     ? dpiScaled(qBound(96, state.margin * 3, 192), targetId)
                                      : 0;
         const QSize cacheSize(shadowRect.width() + liveCacheSlackPx, shadowRect.height() + liveCacheSlackPx);
         if (!ensureNativeShadowBitmap(state, cacheSize)) {
@@ -733,7 +918,6 @@ void ExternalShadowController::updateNativeShadowBitmap(NativeShadowState &state
         state.lastBitmapSize = shadowRect.size();
     }
 
-
     const UINT showFlag = state.shown ? 0 : SWP_SHOWWINDOW;
     SetWindowPos(shadow, stackBehind ? target : nullptr,
                  shadowRect.x(), shadowRect.y(), shadowRect.width(), shadowRect.height(),
@@ -741,15 +925,7 @@ void ExternalShadowController::updateNativeShadowBitmap(NativeShadowState &state
     state.lastTargetRect = targetRect;
     state.lastShadowRect = shadowRect;
     state.shown = true;
-    if (firstVisiblePaint && !state.openingFadeScheduled) {
-        state.openingFadeScheduled = true;
-        const WId targetId = reinterpret_cast<WId>(target);
-        QTimer::singleShot(16, this, [this, targetId]() {
-            advanceOpeningFade(targetId, 1);
-        });
-    } else if (!state.openingFadeScheduled) {
-        state.everShown = true;
-    }
+    state.everShown = true;
 #else
     Q_UNUSED(state)
     Q_UNUSED(targetRect)
@@ -848,6 +1024,14 @@ void ExternalShadowController::syncShadow(QWindow *shadowWindow, QWindow *target
                  baseFlags | (stackBehind ? 0 : SWP_NOZORDER));
     m_lastShadowGeometryByTarget.insert(targetId, shadowRect);
 #else
+    if (canUseXcbWindowOps()) {
+        configureXcbWindow(shadowWindow->winId(), shadowRect);
+        shadowWindow->setGeometry(shadowRect);
+        if (stackBehind)
+            stackXcbWindowBelow(shadowWindow->winId(), targetWindow->winId());
+        m_lastShadowGeometryByTarget.insert(targetWindow->winId(), shadowRect);
+        return;
+    }
     shadowWindow->setGeometry(shadowRect);
     if (stackBehind)
         stackShadow(shadowWindow, targetWindow);
@@ -876,9 +1060,12 @@ void ExternalShadowController::stackShadow(QWindow *shadowWindow, QWindow *targe
     SetWindowPos(shadow, target, 0, 0, 0, 0,
                  baseFlags);
 #else
+    if (canUseXcbWindowOps()) {
+        stackXcbWindowBelow(shadowWindow->winId(), targetWindow->winId());
+        return;
+    }
     shadowWindow->lower();
     targetWindow->raise();
 #endif
 }
 #include "external_shadow_controller.moc"
-

@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 
 import ctypes
+import os
 import sys
 import time
 from ctypes import wintypes
@@ -11,8 +12,6 @@ import shiboken6
 from PySide6.QtCore import QObject, Property, QTimer, Qt, Signal, Slot, QEvent, QUrl
 from PySide6.QtGui import QAction, QColor, QCursor, QGuiApplication, QIcon, QPainter, QPixmap
 from PySide6.QtQml import QQmlEngine
-from PySide6.QtWidgets import QApplication, QFrame, QGraphicsDropShadowEffect, QHBoxLayout, QLabel, QMenu, QPushButton, QSystemTrayIcon, QVBoxLayout, QWidget
-
 from .util import app_root
 
 
@@ -22,7 +21,7 @@ class TrayController(QObject):
     trayPrimaryClicked = Signal()
     iconPathChanged = Signal(str)
 
-    def __init__(self, app: QApplication, settings, theme, project_root: Path | None = None, parent=None, engine=None, qml_dir: Path | None = None):
+    def __init__(self, app, settings, theme, project_root: Path | None = None, parent=None, engine=None, qml_dir: Path | None = None):
         super().__init__(parent)
         self._app = app
         self._settings = settings
@@ -30,22 +29,19 @@ class TrayController(QObject):
         self._project_root = Path(project_root) if project_root is not None else app_root()
         self._engine = engine
         self._qml_dir = Path(qml_dir) if qml_dir is not None else self._project_root / "qml"
-        self._default_icon_path = self._project_root / "resources" / "tray_icon.png"
+        self._default_icon_path = self._project_root / "resources" / "app_icon.ico"
         configured_icon = str(settings.value_py("tray/iconPath", "") or "")
         self._icon_path = Path(configured_icon) if configured_icon else self._default_icon_path
         self._main_window = None
         self._quitting = False
-        self._tray: QSystemTrayIcon | None = None
-        self._tray_menu: QMenu | None = None
+        self._tray = None
+        self._tray_menu = None
         self._last_context_activation = 0.0
         self._qml_tray_menu = None
         self._tray_menu_widget = None
         self._minimize_to_tray = bool(settings.value_py("window/closeToTray", settings.value_py("window/minimizeToTray", False)))
-        try:
-            self._theme.primaryColorChanged.connect(lambda _c: self._update_icon())
-        except Exception:
-            pass
-        self._ensure_tray()
+        if self._minimize_to_tray:
+            self._ensure_tray()
 
     @Property(bool, notify=minimizeToTrayChanged)
     def minimizeToTray(self) -> bool:
@@ -84,12 +80,18 @@ class TrayController(QObject):
         self._settings.set_value_py("window/minimizeToTray", enabled)
         if enabled:
             self._ensure_tray()
+        else:
+            self._destroy_qml_context_menu()
+            self._destroy_themed_context_menu()
+            self._destroy_native_context_menu()
+            self._destroy_tray_icon()
         self.minimizeToTrayChanged.emit(enabled)
 
     @Slot(QObject)
     def registerWindow(self, win) -> None:
         self._main_window = win
-        self._ensure_tray()
+        if self._minimize_to_tray:
+            self._ensure_tray()
 
     @Slot(QObject, result=bool)
     def minimizeWindow(self, win) -> bool:
@@ -229,6 +231,13 @@ class TrayController(QObject):
         self._finish_exit_application()
 
     def _finish_exit_application(self) -> None:
+        if sys.platform == "win32" and os.environ.get("QROUNDEDFRAME_DISABLE_RUN_FAST_EXIT", "").strip().lower() not in {"1", "true", "yes"}:
+            try:
+                sys.stdout.flush()
+                sys.stderr.flush()
+            except Exception:
+                pass
+            os._exit(0)
         self._destroy_qml_context_menu()
         self._destroy_themed_context_menu()
         self._destroy_native_context_menu()
@@ -284,10 +293,14 @@ class TrayController(QObject):
         if self._tray is not None:
             return True
         try:
+            from PySide6.QtWidgets import QApplication, QSystemTrayIcon
+
+            if QApplication.instance() is None:
+                return False
             if not QSystemTrayIcon.isSystemTrayAvailable():
                 return False
             self._tray = QSystemTrayIcon(self)
-            self._tray.setToolTip("qml")
+            self._tray.setToolTip("QRoundedFrame")
             self._tray.setIcon(self._build_icon())
             self._tray.setContextMenu(None)
             self._tray.activated.connect(self._on_activated)
@@ -341,6 +354,8 @@ class TrayController(QObject):
                 return -1
 
     def _on_activated(self, reason) -> None:
+        from PySide6.QtWidgets import QSystemTrayIcon
+
         value = self._reason_value(reason)
         context_value = self._reason_value(QSystemTrayIcon.ActivationReason.Context)
         trigger_value = self._reason_value(QSystemTrayIcon.ActivationReason.Trigger)
@@ -461,6 +476,8 @@ class TrayController(QObject):
             self._tray_menu_widget = None
 
     def _build_native_context_menu(self) -> QMenu:
+        from PySide6.QtWidgets import QMenu
+
         if self._tray_menu is not None:
             return self._tray_menu
         menu = QMenu()
@@ -493,6 +510,8 @@ class TrayController(QObject):
             pass
 
     def _show_themed_context_menu(self, pos) -> None:
+        from PySide6.QtWidgets import QFrame, QGraphicsDropShadowEffect, QPushButton, QVBoxLayout, QWidget
+
         dark = str(getattr(self._theme, "mode", "dark")) == "dark"
         if self._tray_menu_widget is None:
             self._tray_menu_widget = QWidget(None, Qt.WindowType.Tool | Qt.WindowType.FramelessWindowHint | Qt.WindowType.WindowStaysOnTopHint)
@@ -613,7 +632,7 @@ class TrayController(QObject):
             except Exception:
                 return False
 
-    def _force_topmost_widget(self, widget: QWidget) -> None:
+    def _force_topmost_widget(self, widget) -> None:
         if widget is None:
             return
         try:

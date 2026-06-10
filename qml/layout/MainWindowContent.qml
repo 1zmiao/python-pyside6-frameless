@@ -6,6 +6,60 @@ Item {
     id: root
 
     property var windowObject
+    property bool inlineWindowsEnabled: true
+    property string pendingInlinePageKey: ""
+    property var pendingInlineProps: ({})
+    property bool trayMenuVisible: trayMenuLoader.item ? trayMenuLoader.item.visible : false
+    readonly property real devicePixelRatio: Math.max(1.0, root.windowObject && root.windowObject.screen ? root.windowObject.screen.devicePixelRatio : 1.0)
+    readonly property real physicalPixel: 1.0 / devicePixelRatio
+
+    function snapToPhysicalPixel(value) {
+        return Math.round(value / physicalPixel) * physicalPixel
+    }
+
+    function childTitleFor(pageKey) {
+        if (pageKey === "settings") return "\u8bbe\u7f6e"
+        if (pageKey === "tools") return "\u5de5\u5177"
+        if (pageKey === "update") return "\u66f4\u65b0"
+        if (pageKey === "about") return "\u5173\u4e8e"
+        if (pageKey === "inline-demo") return "\u9875\u5185\u5b50\u7a97\u53e3"
+        return "\u9996\u9875"
+    }
+
+    function openChildByPolicy(pageKey, props, mode) {
+        const openMode = mode || "auto"
+        const lowMemory = (typeof App !== "undefined" && App && App.performance) ? App.performance.effectiveProfile === "low-memory" : false
+        const useInline = root.inlineWindowsEnabled && (openMode === "inline" || (openMode === "auto" && lowMemory))
+        if (useInline) {
+            const safeProps = props || ({})
+            if (inlineWindowManagerLoader.item) {
+                inlineWindowManagerLoader.item.openPage(pageKey, childTitleFor(pageKey), safeProps)
+            } else {
+                pendingInlinePageKey = String(pageKey || "about")
+                pendingInlineProps = safeProps
+                inlineWindowManagerLoader.active = true
+            }
+        } else if (typeof App !== "undefined" && App && App.dialogs) {
+            App.dialogs.openChild(root.windowObject, pageKey, props || ({}))
+        }
+    }
+
+    function ensureTrayMenu() {
+        if (!trayMenuLoader.item)
+            trayMenuLoader.active = true
+        return trayMenuLoader.item
+    }
+
+    function closeTrayMenu() {
+        if (trayMenuLoader.item)
+            trayMenuLoader.item.closeMenu()
+    }
+
+    function toggleTrayMenuAt(x, y) {
+        const menu = ensureTrayMenu()
+        if (menu)
+            menu.toggleAt(x, y)
+    }
 
     Row {
         id: mainRow
@@ -14,7 +68,7 @@ Item {
         ResizableSideNav {
             id: sideNav
             height: parent.height
-            width: Math.round((typeof App !== "undefined" && App && App.settings)
+            width: sideNav.snapToPhysicalPixel((typeof App !== "undefined" && App && App.settings)
                    ? Math.max(0, Math.min(App.settings.valueOr("layout/navWidth", Core.Theme.metrics.navWidthDefault), Core.Theme.metrics.navWidthMax))
                    : Core.Theme.metrics.navWidthDefault)
             cornerRadius: root.windowObject ? root.windowObject.cornerRadius : Core.Theme.radius.window
@@ -23,13 +77,13 @@ Item {
 
         PageHost {
             id: pageHost
-            width: parent.width - sideNav.width
+            width: Math.max(0, Math.round(parent.width - sideNav.width))
             height: parent.height
         }
 
         TapHandler {
             acceptedButtons: Qt.LeftButton | Qt.RightButton
-            onTapped: if (trayMenu.visible) trayMenu.closeMenu()
+            onTapped: if (root.trayMenuVisible) root.closeTrayMenu()
         }
     }
 
@@ -42,8 +96,8 @@ Item {
     Connections {
         target: root.windowObject ? root.windowObject.titleBar : null
         function onActivateRequested() {
-            if (trayMenu.visible)
-                trayMenu.closeMenu()
+            if (root.trayMenuVisible)
+                root.closeTrayMenu()
         }
         function onToggleNavRequested() {
             sideNav.toggle()
@@ -52,22 +106,71 @@ Item {
             if (kind === "page") {
                 sideNav.restore()
                 sideNav.currentPage = action
-            } else if (typeof App !== "undefined" && App && App.dialogs) {
-                App.dialogs.openChild(root.windowObject, action, ({}))
+            } else {
+                root.openChildByPolicy(action, ({}), "auto")
             }
         }
     }
 
-    TrayMenuWindow { id: trayMenu }
+    Loader {
+        id: trayMenuLoader
+        active: false
+        sourceComponent: TrayMenuWindow {}
+    }
+
+    Loader {
+        id: inlineWindowManagerLoader
+        x: Math.round(mainRow.x + sideNav.width)
+        y: mainRow.y
+        width: Math.round(pageHost.width)
+        height: pageHost.height
+        z: 20
+        active: false
+        sourceComponent: InlineWindowManager {
+            width: inlineWindowManagerLoader.width
+            height: inlineWindowManagerLoader.height
+        }
+        onLoaded: {
+            if (item && root.pendingInlinePageKey.length > 0) {
+                const key = root.pendingInlinePageKey
+                const props = root.pendingInlineProps || ({})
+                root.pendingInlinePageKey = ""
+                root.pendingInlineProps = ({})
+                item.openPage(key, root.childTitleFor(key), props)
+            }
+        }
+    }
+
+    Connections {
+        target: inlineWindowManagerLoader.item
+        function onWindowCountChanged() {
+            if (!inlineWindowManagerLoader.item || inlineWindowManagerLoader.item.windowCount !== 0)
+                return
+            Qt.callLater(function() {
+                if (inlineWindowManagerLoader.item && inlineWindowManagerLoader.item.windowCount === 0) {
+                    inlineWindowManagerLoader.active = false
+                    if (typeof App !== "undefined" && App && App.trimMemory)
+                        App.trimMemory()
+                }
+            })
+        }
+    }
+
+    Connections {
+        target: Core.InlineWindowBus
+        function onOpenChildRequested(pageKey, mode, props) {
+            root.openChildByPolicy(pageKey, props, mode)
+        }
+    }
 
     MouseArea {
         anchors.fill: parent
         z: 999999
-        visible: trayMenu.visible
+        visible: root.trayMenuVisible
         enabled: visible
         acceptedButtons: Qt.LeftButton | Qt.RightButton
         onPressed: function(mouse) {
-            trayMenu.closeMenu()
+            root.closeTrayMenu()
             mouse.accepted = true
         }
     }
@@ -75,11 +178,11 @@ Item {
     Connections {
         target: (typeof App !== "undefined" && App && App.tray) ? App.tray : null
         function onTrayContextMenuRequested(x, y) {
-            trayMenu.toggleAt(x, y)
+            root.toggleTrayMenuAt(x, y)
         }
         function onTrayPrimaryClicked() {
-            if (trayMenu.visible)
-                trayMenu.closeMenu()
+            if (root.trayMenuVisible)
+                root.closeTrayMenu()
             else if (typeof App !== "undefined" && App && App.tray)
                 App.tray.showMainWindow()
         }

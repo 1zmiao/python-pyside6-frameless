@@ -1,0 +1,145 @@
+#include "native_child_window_manager.h"
+
+#include <QtCore/QMetaObject>
+#include <QtCore/QVariant>
+#include <QtQml/QQmlEngine>
+
+NativeChildWindowManager::NativeChildWindowManager(QObject *parent)
+    : QObject(parent) {
+}
+
+NativeChildWindowManager::~NativeChildWindowManager() {
+    closeAll();
+    qDeleteAll(m_components);
+    m_components.clear();
+}
+
+QObject *NativeChildWindowManager::bridge() const {
+    return m_bridge.data();
+}
+
+void NativeChildWindowManager::setBridge(QObject *bridge) {
+    if (m_bridge == bridge)
+        return;
+    m_bridge = bridge;
+    emit bridgeChanged();
+}
+
+QObject *NativeChildWindowManager::openChild(const QUrl &windowSource,
+                                             const QUrl &pageSource,
+                                             const QString &pageTitle,
+                                             const QString &windowKey,
+                                             QQuickWindow *parentWindow,
+                                             const QVariantMap &properties) {
+    if (!windowSource.isValid() || windowKey.isEmpty())
+        return nullptr;
+
+    if (auto existing = m_windowsByKey.value(windowKey)) {
+        requestWindowClose(existing);
+    }
+
+    QQmlComponent *component = componentFor(windowSource);
+    if (!component || component->isError())
+        return nullptr;
+
+    QVariantMap initialProperties = properties;
+    initialProperties.insert(QStringLiteral("bridge"), QVariant::fromValue(m_bridge.data()));
+    initialProperties.insert(QStringLiteral("pageSource"), pageSource.toString());
+    initialProperties.insert(QStringLiteral("pageTitle"), pageTitle);
+    initialProperties.insert(QStringLiteral("windowKey"), windowKey);
+    initialProperties.insert(QStringLiteral("alwaysOnTop"), false);
+    if (parentWindow)
+        initialProperties.insert(QStringLiteral("parentWindow"), QVariant::fromValue(parentWindow));
+
+    QObject *window = component->createWithInitialProperties(initialProperties);
+    if (!window)
+        return nullptr;
+
+    QQmlEngine::setObjectOwnership(window, QQmlEngine::CppOwnership);
+    connectWindow(window, windowKey);
+
+    QMetaObject::invokeMethod(window, "applyParentWindow", Qt::DirectConnection);
+    QMetaObject::invokeMethod(window, "restorePersistedWindowState", Qt::DirectConnection);
+    QMetaObject::invokeMethod(window, "show", Qt::DirectConnection);
+    return window;
+}
+
+void NativeChildWindowManager::closeChild(const QString &windowKey) {
+    if (auto window = m_windowsByKey.value(windowKey))
+        requestWindowClose(window);
+}
+
+void NativeChildWindowManager::closeAll() {
+    const auto windows = m_windowsByKey;
+    for (auto it = windows.cbegin(); it != windows.cend(); ++it) {
+        if (it.value())
+            requestWindowClose(it.value());
+    }
+}
+
+QQmlComponent *NativeChildWindowManager::componentFor(const QUrl &source) {
+    if (auto component = m_components.value(source))
+        return component;
+    QQmlEngine *engine = qmlEngine(this);
+    if (!engine)
+        return nullptr;
+    auto *component = new QQmlComponent(engine, source, this);
+    if (component->isError()) {
+        delete component;
+        return nullptr;
+    }
+    m_components.insert(source, component);
+    return component;
+}
+
+void NativeChildWindowManager::connectWindow(QObject *window, const QString &windowKey) {
+    if (!window)
+        return;
+    m_windowsByKey.insert(windowKey, window);
+    m_keysByWindow.insert(window, windowKey);
+    connect(window, &QObject::destroyed, this, [this, window]() {
+        forgetWindow(window);
+    });
+    connect(window, SIGNAL(windowEvent(QString,QVariant)), this, SLOT(handleWindowEvent(QString,QVariant)));
+}
+
+void NativeChildWindowManager::handleWindowEvent(const QString &eventType, const QVariant &payload) {
+    Q_UNUSED(payload)
+    if (eventType != QLatin1String("closing"))
+        return;
+    QObject *window = sender();
+    forgetWindow(window);
+    destroyReleasedWindow(window);
+}
+
+void NativeChildWindowManager::forgetWindow(QObject *window) {
+    if (!window)
+        return;
+    const QString key = m_keysByWindow.take(window);
+    if (!key.isEmpty())
+        m_windowsByKey.remove(key);
+}
+
+void NativeChildWindowManager::requestWindowClose(QObject *window) {
+    if (!window)
+        return;
+    if (!QMetaObject::invokeMethod(window, "requestCloseFromController", Qt::DirectConnection))
+        QMetaObject::invokeMethod(window, "close", Qt::QueuedConnection);
+}
+
+void NativeChildWindowManager::destroyReleasedWindow(QObject *window) {
+    if (!window)
+        return;
+    auto guarded = QPointer<QObject>(window);
+    QMetaObject::invokeMethod(this, [guarded]() {
+        if (!guarded)
+            return;
+        if (auto *quickWindow = qobject_cast<QQuickWindow *>(guarded.data())) {
+            quickWindow->hide();
+            quickWindow->releaseResources();
+        }
+        guarded->deleteLater();
+    }, Qt::QueuedConnection);
+}
+
+#include "native_child_window_manager.moc"

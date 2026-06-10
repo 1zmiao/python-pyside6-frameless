@@ -4,7 +4,7 @@ import "../core" as Core
 Rectangle {
     id: root
     width: 6
-    color: hover.containsMouse ? Core.Theme.color.controlHover : "transparent"
+    color: hover.containsMouse ? Core.Theme.color.controlHover : Core.Theme.alpha(Core.Theme.color.controlHover, 0)
     signal dragged(real delta)
 
     MouseArea {

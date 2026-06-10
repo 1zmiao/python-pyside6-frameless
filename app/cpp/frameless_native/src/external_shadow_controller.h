@@ -5,9 +5,11 @@
 #include <QtCore/QPointer>
 #include <QtCore/QRect>
 #include <QtCore/QSize>
+#include <QtCore/QString>
 #include <QtCore/QUrl>
 #include <QtCore/QAbstractNativeEventFilter>
 #include <QtGui/QImage>
+#include <QtGui/QColor>
 #include <QtQml/qqmlregistration.h>
 #include <QtGui/QWindow>
 
@@ -23,9 +25,13 @@ public:
     Q_INVOKABLE void stackShadowBehind(QObject *shadowWindow, QObject *targetWindow, int shadowMargin = 0);
     Q_INVOKABLE void syncShadowWindow(QObject *shadowWindow, QObject *targetWindow, int shadowMargin);
     Q_INVOKABLE void stackShadowOnly(QObject *shadowWindow, QObject *targetWindow);
-    Q_INVOKABLE void setNativeShadow(QObject *targetWindow, bool enabled, const QUrl &assetUrl, int shadowMargin, qreal opacity, int cornerRadius);
+    Q_INVOKABLE void setNativeShadow(QObject *targetWindow, bool enabled, const QUrl &assetUrl, int shadowMargin, qreal opacity, int cornerRadius, const QColor &centerColor = QColor());
     Q_INVOKABLE void syncNativeShadow(QObject *targetWindow);
     Q_INVOKABLE void destroyNativeShadow(QObject *targetWindow);
+    Q_INVOKABLE void setNativeShadowForHwnd(const QString &targetHwnd, bool enabled, const QUrl &assetUrl, int shadowMargin, qreal opacity, int cornerRadius, const QColor &centerColor = QColor());
+    Q_INVOKABLE void syncNativeShadowForHwnd(const QString &targetHwnd);
+    Q_INVOKABLE void destroyNativeShadowForHwnd(const QString &targetHwnd);
+    Q_INVOKABLE bool isSnappedHwnd(const QString &targetHwnd) const;
     Q_INVOKABLE bool isSnapped(QObject *window) const;
 
     bool nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result) override;
@@ -33,6 +39,7 @@ public:
 private:
     struct NativeShadowState {
         QPointer<QWindow> target;
+        quintptr targetHwnd = 0;
         quintptr shadowHwnd = 0;
         QUrl assetUrl;
         QImage source;
@@ -45,6 +52,7 @@ private:
         int margin = 0;
         qreal opacity = 1.0;
         int cornerRadius = 0;
+        QColor centerColor;
         bool enabled = false;
         bool shown = false;
         bool inSizeMove = false;
@@ -56,7 +64,10 @@ private:
     };
 
     static QWindow *asWindow(QObject *object);
+    static quintptr parseHwnd(const QString &value);
+    static WId nativeTargetId(const NativeShadowState &state);
     static QRect nativeWindowRect(QWindow *window);
+    static QRect nativeTargetRect(WId targetId);
     static QRect nativeWorkAreaForRect(const QRect &rect);
     static bool rectLooksSnapped(const QRect &rect, const QRect &workArea);
     void ensureNativeEventFilter();
@@ -77,6 +88,7 @@ private:
     void advanceOpeningFade(WId targetId, int step);
     static QRect nativeTargetRect(QWindow *window);
     static int dpiScaled(int value, QWindow *window);
+    static int dpiScaled(int value, WId targetId);
 
     QHash<WId, QPointer<QWindow>> m_targetById;
     QHash<WId, QPointer<QWindow>> m_shadowByTarget;

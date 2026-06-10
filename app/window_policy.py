@@ -12,6 +12,11 @@ from app.windows_compat import is_windows_11_or_newer
 TRUE_VALUES = {"1", "true", "yes", "on"}
 FALSE_VALUES = {"0", "false", "no", "off"}
 
+# Linux custom chrome is intentionally opt-in per tested window manager.
+# Keep this set empty by default: after a desktop/WM is verified, add stable
+# tokens such as "xfwm4", "muffin", "marco", or "kwin_x11" here.
+LINUX_CUSTOM_CHROME_WM_ALLOWLIST: set[str] = set()
+
 
 @dataclass(frozen=True)
 class WindowAppearancePolicy:
@@ -39,6 +44,22 @@ def _env_bool(name: str) -> bool | None:
     if value in FALSE_VALUES:
         return False
     return None
+
+
+def _env_tokens(name: str) -> set[str]:
+    raw = _env_text(name).lower()
+    if not raw:
+        return set()
+    for sep in (";", ",", "|"):
+        raw = raw.replace(sep, " ")
+    return {part.strip() for part in raw.split() if part.strip()}
+
+
+def _text_matches_any(text: str, tokens: set[str]) -> bool:
+    if not text or not tokens:
+        return False
+    normalized = text.lower()
+    return any(token and token in normalized for token in tokens)
 
 
 def _linux_session_type() -> str:
@@ -70,10 +91,11 @@ def _linux_wm_name() -> str:
     return ";".join(v for v in values if v).lower()
 
 
-def _windows_display_fallback_needed() -> bool:
+def _windows_display_fallback_needed(is_win11_or_newer: bool) -> bool:
     override = _env_bool("FRAMELESS_ASSUME_SYSTEM_CORNERS")
     if override is not None:
         return not override
+    treat_vm_as_fallback = _env_bool("FRAMELESS_WINDOWS_VM_CUSTOM_CHROME") is True
     if sys.platform != "win32":
         return False
     try:
@@ -98,19 +120,25 @@ def _windows_display_fallback_needed() -> bool:
             texts.extend([device.DeviceName, device.DeviceString, device.DeviceID])
             index += 1
         joined = " ".join(t for t in texts if t).lower()
-        fallback_markers = (
+        hard_fallback_markers = (
             "microsoft basic display",
             "microsoft remote display",
             "remote display",
+            "virtual display",
+        )
+        vm_markers = (
             "vmware",
             "virtualbox",
-            "virtual display",
             "hyper-v",
             "parallels",
             "virtio",
             "qxl",
         )
-        return any(marker in joined for marker in fallback_markers)
+        if any(marker in joined for marker in hard_fallback_markers):
+            return True
+        if not is_win11_or_newer:
+            return any(marker in joined for marker in vm_markers)
+        return treat_vm_as_fallback and any(marker in joined for marker in vm_markers)
     except Exception:
         return False
 
@@ -120,10 +148,25 @@ def _linux_system_corners_trusted(desktop: str, wm_name: str) -> bool:
     if override is not None:
         return override
 
-    # Linux decoration themes are too variable to trust by name. A desktop can
-    # provide top rounded decoration while leaving client/content bottom corners
-    # square, so system corners are trusted only through an explicit override.
-    return False
+    allowlist = set(LINUX_CUSTOM_CHROME_WM_ALLOWLIST)
+    allowlist.update(_env_tokens("FRAMELESS_LINUX_CUSTOM_CHROME_WM"))
+    if _text_matches_any(f"{desktop};{wm_name}", allowlist):
+        return False
+
+    # Linux window managers/compositors vary too much to infer by name. Keep
+    # the default conservative: use system chrome unless a tested WM is in the
+    # allowlist or the user explicitly forces custom chrome.
+    return True
+
+
+def _linux_gnome_headerbar_candidate(session: str, desktop: str, wm_name: str) -> bool:
+    override = _env_bool("FRAMELESS_GNOME_HEADERBAR")
+    if override is not None:
+        return override
+    if session != "x11":
+        return False
+    text = f"{desktop};{wm_name}"
+    return _text_matches_any(text, {"gnome"})
 
 
 def current_window_policy() -> WindowAppearancePolicy:
@@ -134,7 +177,7 @@ def current_window_policy() -> WindowAppearancePolicy:
 
     if sys.platform == "win32":
         is_win11 = is_windows_11_or_newer()
-        display_fallback = _windows_display_fallback_needed()
+        display_fallback = _windows_display_fallback_needed(is_win11)
         custom_chrome = force_custom or ((not is_win11 or display_fallback) and not force_system)
         if force_system:
             custom_chrome = False
@@ -166,12 +209,23 @@ def current_window_policy() -> WindowAppearancePolicy:
         desktop = _linux_desktop()
         wm_name = _linux_wm_name()
         trusted = _linux_system_corners_trusted(desktop, wm_name)
+        gnome_headerbar = _linux_gnome_headerbar_candidate(session, desktop, wm_name)
         custom_chrome = force_custom or (not trusted and not force_system)
         if force_system:
             custom_chrome = False
-        external_shadow = custom_chrome and session != "wayland"
-        custom_shadow = custom_chrome
-        native_shell = False if force_legacy else (force_native or custom_chrome)
+        native_shell = False if force_legacy else (force_native or custom_chrome or (gnome_headerbar and not force_system))
+        headerbar_shadow = gnome_headerbar and native_shell and not force_system and session != "wayland"
+        external_shadow = (custom_chrome or headerbar_shadow) and session != "wayland"
+        custom_shadow = custom_chrome or headerbar_shadow
+        reason = "Linux system chrome conservative fallback"
+        if force_custom:
+            reason = "Linux custom chrome forced by environment"
+        elif force_system:
+            reason = "Linux system chrome forced by environment"
+        elif custom_chrome:
+            reason = "Linux custom chrome selected by tested WM allowlist"
+        elif gnome_headerbar and native_shell:
+            reason = "Linux GNOME headerbar system-behavior test"
         return WindowAppearancePolicy(
             platform="linux",
             session_type=session,
@@ -182,8 +236,8 @@ def current_window_policy() -> WindowAppearancePolicy:
             external_shadow_supported=external_shadow,
             native_shell_preferred=native_shell,
             shadow_policy="custom-external" if external_shadow else ("none" if custom_chrome else "system"),
-            corner_policy="rounded" if custom_chrome else "auto",
-            reason="Linux system four-corner rounding not trusted" if custom_chrome else "Linux system corners explicitly trusted",
+            corner_policy="rounded" if (custom_chrome or (gnome_headerbar and native_shell)) else "auto",
+            reason=reason,
         )
 
     custom_chrome = force_custom and not force_system

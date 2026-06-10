@@ -10,7 +10,7 @@ sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parents[1]
 NATIVE_SRC = ROOT / "app" / "cpp" / "frameless_native" / "src"
 PREBUILT = ROOT / "app" / "native" / "prebuilt"
-TAG = "win32-x64-py310-qt6.11"
+DEFAULT_TAG = "win32-x64-py310-qt6.11"
 
 ERRORS: list[str] = []
 WARNINGS: list[str] = []
@@ -46,9 +46,7 @@ def check_native_agent() -> None:
         "QEvent::Expose": "Do not reapply DWM attributes on Expose; it can cause Qt Quick repaint storms.",
         "scheduleApplyWindowAttributes": "Do not queue repeated DWM/style reapplication.",
         "scheduleApplyRoundedRegion": "Do not update HWND regions from a live resize debounce; it causes Win10 resize jitter.",
-        "QAbstractNativeEventFilter": "NativeWindowAgent must not install a global message hook for resize-region fixes.",
         "SetWindowLongPtrW": "Do not rewrite the main HWND style in NativeWindowAgent; QWindowKit owns it.",
-        "SWP_FRAMECHANGED": "Do not force main HWND frame changes from NativeWindowAgent.",
         "WS_POPUP": "Do not force WS_POPUP on the main window; it breaks QWindowKit behavior.",
         "WS_CAPTION": "Do not manually add/remove WS_CAPTION in NativeWindowAgent.",
     }
@@ -58,22 +56,159 @@ def check_native_agent() -> None:
 
     required = [
         "if (!m_customShadow)",
-        "QMargins(0, 0, 0, 0)",
+        "QMargins frameMargins(0, 0, 0, 0)",
         "DwmExtendFrameIntoClientArea(hwnd, &margins)",
         "DWMNCRP_ENABLED",
-        "applyWindowRegion",
+        "QAbstractNativeEventFilter",
+        "nativeEventFilter",
+        "msg->hwnd != hwnd",
+        "WM_ERASEBKGND",
+        "FillRect",
+        "setShellBackgroundColor",
+        "setResizeHitTestInsets",
+        "applyWindowRegion(false)",
         "CreateRoundRectRgn",
         "CreateRectRgn",
-        "inwardBias",
-        "applyWindowRegion(false)",
         "SetWindowRgn(hwnd, region, redrawRegion)",
         "SetWindowRgn(hwnd, nullptr",
     ]
     for needle in required:
         if needle not in text:
             fail(f"{rel(path)} is missing required custom-path guard/code: {needle}")
-    if "DWMNCRP_DISABLED" in text:
-        fail(f"{rel(path)} must keep DWM non-client rendering enabled on the custom path; disabling it exposes classic Win10 frame artifacts.")
+    if "const DWORD ncPolicy = 1" in text:
+        fail(f"{rel(path)} must keep DWM non-client rendering enabled on the custom path; disabling it can expose classic Win10 frame artifacts.")
+    resize_block = "case QEvent::Resize:\n            applyWindowRegion(false);"
+    if resize_block not in text:
+        fail(f"{rel(path)} must keep live resize on region-only updates; do not force frame changes from QEvent::Resize.")
+
+    qwk_path = ROOT / "third_party" / "qwindowkit" / "src" / "core" / "contexts" / "win32windowcontext.cpp"
+    qwk_text = read_text(qwk_path)
+    qwk_forbidden = {
+        "syncCustomWindowRegion": "QWindowKit must not own this project's custom region logic.",
+        "syncQRoundedFrameRegion": "Do not patch QWindowKit with project-specific live-resize region sync.",
+        "frameless-custom-shadow": "Do not branch QWindowKit internals on this project's shadow policy.",
+        "frameless-corner-radius": "Do not branch QWindowKit internals on this project's corner policy.",
+        "qrounded-full-client-frame": "Do not restore the failed full-client-frame copy-bits experiment.",
+    }
+    for needle, reason in qwk_forbidden.items():
+        if needle in qwk_text:
+            fail(f"{rel(qwk_path)} contains project-specific QWindowKit pattern {needle!r}. {reason}")
+    qwk_required = [
+        "bool realFull = full && !max",
+        "qrounded-resize-edge-inset",
+        "qrounded-resize-corner-inset",
+        'key == QStringLiteral("qrounded-resize-edge-inset")',
+        'key == QStringLiteral("qrounded-resize-corner-inset")',
+        "nativeWindowPos.x >= 0",
+        "nativeWindowPos.y >= 0",
+        "nativeWindowPos.x <= windowWidth",
+        "nativeWindowPos.y <= windowHeight",
+        "isInLeftCornerBorder",
+        "isInTopCornerBorder",
+        "*result = FALSE",
+    ]
+    for needle in qwk_required:
+        if needle not in qwk_text:
+            fail(f"{rel(qwk_path)} is missing required native-window baseline code: {needle}")
+
+
+def check_native_widget_host_agent() -> None:
+    cpp_path = NATIVE_SRC / "native_widget_host_agent.cpp"
+    header_path = NATIVE_SRC / "native_widget_host_agent.h"
+    cmake_path = ROOT / "app" / "cpp" / "frameless_native" / "CMakeLists.txt"
+    qml_path = ROOT / "qml" / "NativeMainContent.qml"
+    text = read_text(cpp_path) + "\n" + read_text(header_path)
+
+    required = [
+        "class NativeWidgetHostAgent",
+        "QML_ELEMENT",
+        "QAbstractNativeEventFilter",
+        "nativeEventFilter",
+        "WM_NCHITTEST",
+        "WM_NCLBUTTONDOWN",
+        "WM_NCCALCSIZE",
+        "WM_SIZING",
+        "WM_MOVING",
+        "WM_WINDOWPOSCHANGING",
+        "WM_WINDOWPOSCHANGED",
+        "WM_CONTEXTMENU",
+        "HTTRANSPARENT",
+        "HTTOPLEFT",
+        "HTBOTTOMRIGHT",
+        "HTREDUCE",
+        "HTZOOM",
+        "HTCLOSE",
+        "filterEnabled",
+        "sizingOrPositionChanging",
+        "windowPositionChanged",
+        "isMaximizedNative",
+        "toggleMaximizedNative",
+        "showMinimizedNative",
+        "activateNative",
+        "setTopMostNative",
+        "applyWindowsChromeNative",
+        "showMaximizedNative",
+        "showNormalNative",
+        "beginCaptionMoveNative",
+        "setMouseCaptureNative",
+        "setWindowGeometryNative",
+        "windowFrameGeometryNative",
+        "restoreBoundsNative",
+        "setRestoreBoundsNative",
+        "forceNormalGeometryNative",
+        "setShellBackgroundColor",
+        "setCornerRadius",
+        "applyWindowRegion",
+        "CreateRoundRectRgn",
+        "SetWindowRgn",
+        "WM_ERASEBKGND",
+        "FillRect",
+        "DwmSetWindowAttribute",
+        "DwmExtendFrameIntoClientArea",
+        "captionHitTest",
+        "activateWindowBeneathPoint",
+        "nativeSizeMoveStarted",
+        "nativeSizeMoveFinished",
+    ]
+    for needle in required:
+        if needle not in text:
+            fail(f"{rel(cpp_path)} is missing required native widget host behavior: {needle}")
+
+    cmake_text = read_text(cmake_path)
+    for needle in ["src/native_widget_host_agent.h", "src/native_widget_host_agent.cpp"]:
+        if needle not in cmake_text:
+            fail(f"{rel(cmake_path)} does not compile {needle}.")
+
+    qml_text = read_text(qml_path)
+    for needle in [
+        "import FramelessNative 1.0",
+        "NativeWidgetHostAgent",
+        "hostHwnd",
+        "NativeHost.nativeHwnd",
+        "filterEnabled",
+        "property int shadowVisualInset: root.inlineShadowVisible ? root.normalShadowVisualInset : 0",
+        "onSizingOrPositionChanging",
+        "onMoving",
+        "onWindowPositionChanged",
+        "NativeHost.setNativeWidgetAgentReady",
+        "nativeWidgetHostAgent.setShellBackgroundColor",
+        "NativeHost.setShellBackgroundColor",
+        "onNativeSizeMoveStarted",
+        "onNativeSizeMoveFinished",
+        "root.syncNativeState()",
+        "NativeHost.refreshWindowsChrome",
+        "ExternalShadowController",
+        "property bool nativeExternalShadow: root.nativeCustomShadow && Qt.platform.os === \"windows\"",
+        "property bool inlineShadowVisible: root.nativeCustomShadow",
+        "&& !root.nativeExternalShadow",
+        "property bool nativeExternalShadowEnabled",
+        "externalShadow.setNativeShadowForHwnd",
+        "externalShadow.syncNativeShadowForHwnd",
+        "externalShadow.destroyNativeShadowForHwnd",
+        "Component.onDestruction: root.cleanupExternalShadow()",
+    ]:
+        if needle not in qml_text:
+            fail(f"{rel(qml_path)} is missing NativeWidgetHostAgent integration: {needle}")
 
 
 def check_external_shadow() -> None:
@@ -102,10 +237,21 @@ def check_external_shadow() -> None:
         "renderNativeShadowBitmap(state, shadowRect.size(), marginPx, guardPx, innerOverlapPx, opacityScale)",
         "painter.drawImage(dCenter, source, sCenter)",
         "showFlag",
+        "targetHwnd",
+        "setNativeShadowForHwnd",
+        "syncNativeShadowForHwnd",
+        "destroyNativeShadowForHwnd",
+        "isSnappedHwnd",
+        "nativeTargetId",
+        "parseHwnd",
+        "MA_NOACTIVATEANDEAT",
+        "WS_POPUP | WS_DISABLED",
     ]
     for needle in required:
         if needle not in text:
             fail(f"{rel(path)} is missing required external-shadow behavior: {needle}")
+    if "GWLP_HWNDPARENT" in text:
+        fail(f"{rel(path)} must keep native shadow helpers unowned; owned popups can flash above their owner on Win10.")
 
     forbidden = {
         "alphaProfile": "Do not synthesize a custom alpha curve; native custom shadow must render the PNG asset.",
@@ -116,6 +262,11 @@ def check_external_shadow() -> None:
         "innerGuardPx": "Do not draw extra center/guard overlays; the PNG asset owns all shadow pixels.",
         "hiddenExtra": "Do not draw extra hidden guard strips behind the window; this creates hard seams and square intersections.",
         "CompositionMode_Source": "Do not overwrite layered-window pixels with a procedural center fill.",
+        "painter.fillRect(dCenter, state.centerColor)": "Do not fill the native shadow center with a theme rectangle; render the original PNG center to avoid a cut-out box.",
+        "applyNativeShadowRegion": "Do not clip the native shadow center to fix resize black fill; the black fill belongs to the main HWND resize path.",
+        "SetWindowRgn(shadow": "Do not cut a hole in the native shadow HWND; center fill intentionally masks helper resize lag.",
+        "CombineRgn(outer, outer, inner, RGN_DIFF)": "Do not subtract the target content area from the native shadow helper.",
+        "innerKeepPx": "Do not add a shadow-center clipping inset; keep the designed center fill intact.",
     }
     for needle, reason in forbidden.items():
         if needle in text:
@@ -133,12 +284,15 @@ def check_qml_shadow_path() -> None:
         "| Qt.WindowSystemMenuHint",
         "| Qt.WindowMinimizeButtonHint",
         "| Qt.WindowMaximizeButtonHint",
-        "| (root.customExternalShadow ? (Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint) : 0)",
+        "| Qt.FramelessWindowHint",
+        "| Qt.NoDropShadowWindowHint",
         "targetWindow: (root.qmlExternalShadow && root.customShadowEnabled) ? root : null",
         "externalShadow.destroyNativeShadow(root)",
+        "Core.Theme.color.surface",
         "root.scheduleNativeShadowShow()",
         "id: stableNativeShadowSyncTimer",
         "Component.onDestruction: root.cleanupExternalShadow()",
+        "root.bridge.window.isSnappedState(root)",
     ]
     for needle in required:
         if needle not in text:
@@ -175,16 +329,169 @@ def check_qml_shadow_path() -> None:
     if "autoShow: false" not in child_text:
         fail(f"{rel(child_path)} must set autoShow: false so child windows do not show before geometry/properties are applied.")
 
+    theme_path = ROOT / "qml" / "core" / "Theme.qml"
+    theme_text = read_text(theme_path)
+    for needle in [
+        'function baseSurfaceForMode(nextMode) { return Qt.color(',
+        'function baseSurfaceAltForMode(nextMode) { return Qt.color(',
+        'function baseCardForMode(nextMode) { return Qt.color(',
+        'function baseOutlineForMode(nextMode) { return Qt.color(',
+    ]:
+        if needle not in theme_text:
+            fail(f"{rel(theme_path)} must return real QColor values for preview mixing; string colors make the day-theme ripple render dark.")
+
+    ripple_path = ROOT / "qml" / "controls" / "BackgroundRipple.qml"
+    ripple_text = read_text(ripple_path)
+    if "colorRole: root.colorRole" not in ripple_text:
+        fail(f"{rel(ripple_path)} must pass colorRole through to ThemeTransitionLayer so card/sidebar/titlebar ripples use the right surface.")
+
+    legacy_child_path = ROOT / "qml" / "window" / "FramelessWindow.qml"
+    legacy_child_text = read_text(legacy_child_path)
+    if "snapPreview.showAt" in legacy_child_text:
+        fail(f"{rel(legacy_child_path)} must not show the legacy QML snap preview; native/system snap owns this feedback.")
+
     dialog_path = ROOT / "app" / "bridge" / "dialog_service.py"
     dialog_text = read_text(dialog_path)
+    if "_use_native_child_windows" not in dialog_text or "return bool(self._native_window_shell)" not in dialog_text:
+        fail(f"{rel(dialog_path)} must keep child window shell selection tied to the top-level native shell policy.")
+    for needle in ["self._closing_all", "self._shutting_down", "def shutdown(self) -> None:", "if self._shutting_down or self._closing_all:"]:
+        if needle not in dialog_text:
+            fail(f"{rel(dialog_path)} must guard child-window creation/destruction during application shutdown.")
+    host_path = ROOT / "app" / "windows_host.py"
+    host_text = read_text(host_path)
+    if "self._bridge.dialogs.shutdown()" not in host_text:
+        fail(f"{rel(host_path)} must use DialogService.shutdown() when the main window exits.")
     show_index = dialog_text.find("obj.show()")
     restore_index = dialog_text.find("obj.restorePersistedWindowState()")
     if show_index < 0 or restore_index < 0 or show_index < restore_index:
         fail(f"{rel(dialog_path)} must apply child geometry/restored state before obj.show().")
 
+    if "self._resize_border = 3" not in host_text:
+        fail(f"{rel(host_path)} must use the shared 3px resize edge hit-test width.")
+    for needle in [
+        "def setShellBackgroundColor(self, color) -> None:",
+        "def animateShellBackgroundColor(self, from_color, to_color, duration_ms: int) -> None:",
+        "def _set_shell_background_color(self, qcolor: QColor) -> None:",
+        "self._quick.setClearColor(self._shell_background_color)",
+        "self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)",
+        "self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, False)",
+        "self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)",
+        "self.setAutoFillBackground(True)",
+        "self._quick.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)",
+        "self._quick.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, False)",
+        "self._quick.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)",
+        "self._quick.setAutoFillBackground(True)",
+    ]:
+        if needle not in host_text:
+            fail(f"{rel(host_path)} must keep the QWidget/QQuickWidget host opaque while syncing the Qt Quick clear color.")
+    for needle in [
+        "self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)",
+        "self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)",
+        "self._quick.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)",
+        "self._quick.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)",
+    ]:
+        if needle in host_text:
+            fail(f"{rel(host_path)} must not mark the main QWidget/QQuickWidget host transparent; live resize then exposes black backing pixels.")
+    if "_normalize_vertical_snap_geometry" in host_text:
+        fail(f"{rel(host_path)} must not rewrite Windows snap geometry around shadow insets.")
+    if 'def _snap_target_for_cursor(self) -> tuple[QRect, str] | None:\n        if sys.platform == "win32":\n            return None' not in host_text:
+        fail(f"{rel(host_path)} must leave Windows snap targets to the OS, not a Python preview/snap calculation.")
 
-def check_runtime_guards() -> None:
-    legacy = PREBUILT / TAG
+    controller_path = ROOT / "app" / "bridge" / "window_controller.py"
+    controller_text = read_text(controller_path)
+    if "int(round(3 * scale))" not in controller_text or "int(round(5 * scale))" not in controller_text:
+        fail(f"{rel(controller_path)} must use 3px edges and 5px corners for Windows resize hit testing.")
+    if 'def _snap_target_for_cursor(self, win: QWindow, cursor_x: int, cursor_y: int) -> tuple[QRect, str] | None:\n        if sys.platform == "win32":\n            return None' not in controller_text:
+        fail(f"{rel(controller_path)} must leave Windows child-window snap targets to the OS.")
+
+    main_path = ROOT / "app" / "main.py"
+    main_text = read_text(main_path)
+    memory_tools_path = ROOT / "app" / "bridge" / "memory_tools.py"
+    memory_tools_text = read_text(memory_tools_path)
+    for needle in [
+        'os.environ.setdefault("QSG_RHI_BACKEND", "d3d11")',
+        'os.environ.setdefault("QSG_NO_VSYNC", "1")',
+        'os.environ.setdefault("QT_QPA_UPDATE_IDLE_TIME", "0")',
+        'os.environ.setdefault("QT_QPA_DISABLE_REDIRECTION_SURFACE", "1")',
+        '"QROUNDEDFRAME_DISABLE_RESIZE_FAST_PRESENT"',
+        'os.environ.setdefault("QT_QUICK_BACKEND", "software")',
+        '"QROUNDEDFRAME_FORCE_SOFTWARE_QUICK"',
+    ]:
+        if needle not in memory_tools_text:
+            fail(f"{rel(memory_tools_path)} must keep the Windows Qt Quick fast-present/diagnostic settings available for native live resize: {needle}")
+    for needle in [
+        '"QSG_RENDER_LOOP"',
+        '"QROUNDEDFRAME_DISABLE_BASIC_RENDER_LOOP"',
+    ]:
+        if needle in memory_tools_text or needle in main_text:
+            fail(f"{rel(memory_tools_path)} / {rel(main_path)} must not restore the basic render-loop resize experiment: {needle}")
+    for needle in [
+        "use_qwindowkit_shell = should_use_qwindowkit_shell(window_policy, project_root)",
+        "use_native_child_shell = native_runtime_available(project_root) and window_policy.native_shell_preferred",
+        "native_window_shell=use_native_child_shell",
+        "if use_qwindowkit_shell:",
+        "from PySide6.QtQuick import QQuickWindow, QSGRendererInterface",
+        "fmt.setAlphaBufferSize(8)",
+        "QROUNDEDFRAME_DISABLE_QUICK_ALPHA_BUFFER",
+        "QQuickWindow.setDefaultAlphaBuffer(",
+        "QQuickWindow.setGraphicsApi(QSGRendererInterface.GraphicsApi.Software)",
+    ]:
+        if needle not in main_text:
+            fail(f"{rel(main_path)} must keep main QWindowKit shell selection separate from native child-window shell selection.")
+
+    native_agent_path = NATIVE_SRC / "native_window_agent.cpp"
+    native_agent_text = read_text(native_agent_path)
+    if "setResizeHitTestInsets(4, 6)" not in native_agent_text:
+        fail(f"{rel(native_agent_path)} must use 4px edges and 6px corners for QWindowKit resize hit testing.")
+    for needle in [
+        "m_resizeEdgeInset",
+        "m_resizeCornerInset",
+        "updateClassBackgroundBrush",
+        "restoreClassBackgroundBrush",
+        "SetClassLongPtrW(hwnd, GCLP_HBRBACKGROUND",
+        "InvalidateRect(hwnd, nullptr, FALSE)",
+        "case WM_ERASEBKGND: {\n        if (msg->hwnd != hwnd)",
+        "case WM_ENTERSIZEMOVE:",
+        "case WM_SIZING:",
+        "case WM_WINDOWPOSCHANGING:",
+        "case WM_WINDOWPOSCHANGED:",
+    ]:
+        if needle not in native_agent_text:
+            fail(f"{rel(native_agent_path)} must store project resize hit-test settings: {needle}")
+    for needle in [
+        "fillExposedResizeStrips",
+        "fillExposedResizeBands",
+        "emitLiveResizeTargetForNativeSize",
+        "liveResizeTargetChanged",
+        "m_lastClientPaintRect",
+        "m_lastWindowRect",
+        "m_hasLastWindowRect",
+    ]:
+        if needle in native_agent_text:
+            fail(f"{rel(native_agent_path)} must not add GDI/live-resize repaint loops on top of QWindowKit's native resize path: {needle}")
+
+    app_window_path = ROOT / "qml" / "window" / "AppWindow.qml"
+    app_window_text = read_text(app_window_path)
+    if "id: nativeResizeBackdrop" in app_window_text or "nativeLiveResizeBackdropWidth" in app_window_text:
+        fail(f"{rel(app_window_path)} must not paint a QML live-resize backdrop; it hides real content with solid theme color during fast resize.")
+    if "id: background" not in app_window_text or "anchors.fill: parent" not in app_window_text:
+        fail(f"{rel(app_window_path)} must keep the normal window background anchored to the actual QML window size.")
+
+    native_widget_header = NATIVE_SRC / "native_widget_host_agent.h"
+    if "qreal m_resizeBorder = 4.0;" not in read_text(native_widget_header):
+        fail(f"{rel(native_widget_header)} must default QWidget-host resize hit testing to 4px edges.")
+
+    resize_area_path = ROOT / "qml" / "window" / "ResizeArea.qml"
+    resize_area_text = read_text(resize_area_path)
+    if "property int grip: 4" not in resize_area_text or "property int cornerGrip: 6" not in resize_area_text:
+        fail(f"{rel(resize_area_path)} must keep fallback resize areas at 4px edges and 6px corners.")
+
+    if "snappedVisualKind === \"vertical\" ? normalShadowVisualInset" in legacy_child_text:
+        fail(f"{rel(legacy_child_path)} must not keep horizontal shadow margins while snapped; Windows snap divider owns the outer bounds.")
+
+
+def check_runtime_guards(tag: str) -> None:
+    legacy = PREBUILT / tag
     if legacy.exists():
         fail(f"Legacy unqualified native prebuilt exists and can confuse testing: {rel(legacy)}")
 
@@ -198,7 +505,7 @@ def check_runtime_guards() -> None:
             warn(f"{name}={value!r} overrides normal policy; only use it for targeted diagnostics.")
 
 
-def check_prebuilt(require_prebuilt: bool) -> None:
+def check_prebuilt(require_prebuilt: bool, tag: str) -> None:
     source_files = [
         NATIVE_SRC / "native_window_agent.cpp",
         NATIVE_SRC / "native_window_agent.h",
@@ -209,8 +516,8 @@ def check_prebuilt(require_prebuilt: bool) -> None:
     newest_source = max(p.stat().st_mtime for p in source_files if p.exists())
 
     for variant in ("system", "custom"):
-        base = PREBUILT / f"{TAG}-{variant}" / "qml" / "FramelessNative"
-        dll = base / "FramelessNative.dll"
+        base = PREBUILT / f"{tag}-{variant}" / "qml" / "FramelessNative"
+        library = base / ("FramelessNative.dll" if sys.platform == "win32" else "libFramelessNative.so")
         qmldir = base / "qmldir"
         if not base.exists():
             if require_prebuilt:
@@ -218,13 +525,13 @@ def check_prebuilt(require_prebuilt: bool) -> None:
             else:
                 warn(f"{variant} native module is not built yet: {rel(base)}")
             continue
-        if not dll.exists():
+        if not library.exists():
             if require_prebuilt:
-                fail(f"Missing {variant} DLL: {rel(dll)}")
+                fail(f"Missing {variant} native library: {rel(library)}")
             else:
-                warn(f"Missing {variant} DLL before build: {rel(dll)}")
-        elif dll.stat().st_mtime < newest_source:
-            message = f"Stale {variant} DLL: {rel(dll)} is older than native sources."
+                warn(f"Missing {variant} native library before build: {rel(library)}")
+        elif library.stat().st_mtime < newest_source:
+            message = f"Stale {variant} native library: {rel(library)} is older than native sources."
             if require_prebuilt:
                 fail(message)
             else:
@@ -257,13 +564,15 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Check native window source/build integrity.")
     parser.add_argument("--require-prebuilt", action="store_true", help="Require system/custom native DLL outputs to exist and be fresh.")
     parser.add_argument("--summary", action="store_true", help="Print current runtime policy and candidate paths.")
+    parser.add_argument("--tag", default=DEFAULT_TAG, help="Native prebuilt runtime tag to check.")
     args = parser.parse_args()
 
     check_native_agent()
+    check_native_widget_host_agent()
     check_external_shadow()
     check_qml_shadow_path()
-    check_runtime_guards()
-    check_prebuilt(args.require_prebuilt)
+    check_runtime_guards(args.tag)
+    check_prebuilt(args.require_prebuilt, args.tag)
     if args.summary:
         print_runtime_summary()
 
@@ -279,6 +588,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-
-

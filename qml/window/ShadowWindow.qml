@@ -6,7 +6,11 @@ Window {
     id: root
 
     objectName: "CustomShadowWindow"
-    flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowDoesNotAcceptFocus | Qt.WindowTransparentForInput | Qt.NoDropShadowWindowHint
+    flags: (Qt.platform.os === "linux" ? Qt.Window : Qt.Tool)
+           | Qt.FramelessWindowHint
+           | Qt.WindowDoesNotAcceptFocus
+           | Qt.WindowTransparentForInput
+           | Qt.NoDropShadowWindowHint
            | (targetWindow && targetWindow.alwaysOnTop ? Qt.WindowStaysOnTopHint : 0)
     color: "transparent"
     visible: false

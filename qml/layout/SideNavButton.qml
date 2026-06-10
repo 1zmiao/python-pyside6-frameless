@@ -19,9 +19,11 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: Core.Theme.radius.button
-        color: root.selected ? Core.Theme.color.navActive : (mouse.containsMouse ? Core.Theme.color.controlHover : "transparent")
-        border.color: root.selected ? Core.Theme.primaryOutline : "transparent"
+        color: root.selected ? Core.Theme.color.navActive : (mouse.containsMouse ? Core.Theme.color.controlHover : Core.Theme.alpha(Core.Theme.color.controlHover, 0))
+        border.color: root.selected ? Core.Theme.primaryOutline : Core.Theme.alpha(Core.Theme.primaryOutline, 0)
         border.width: root.selected ? 1 : 0
+        Behavior on color { ColorAnimation { duration: root.selected ? Core.Theme.animatedColorTransitionMs : Core.Theme.controlTransitionMs; easing.type: Easing.InOutCubic } }
+        Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
     }
 
     IconImage {
@@ -46,6 +48,7 @@ Item {
         font.family: Core.Theme.appFontFamily
         font.bold: root.selected
         elide: Text.ElideRight
+        Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
     }
 
     MouseArea {

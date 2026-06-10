@@ -53,7 +53,13 @@ Window {
             openAt(px, py)
     }
 
-    function closeMenu() { visible = false }
+    function closeMenu() {
+        if (!visible)
+            return
+        visible = false
+        if (typeof App !== "undefined" && App && App.trimMemory)
+            Qt.callLater(App.trimMemory)
+    }
 
     PanelShadow {
         x: panel.x
@@ -130,7 +136,7 @@ Window {
         Rectangle {
             anchors.fill: parent
             radius: Core.Theme.radius.button
-            color: mouse.pressed ? Core.Theme.color.controlPressed : (item.hovered ? Core.Theme.color.controlHover : "transparent")
+            color: mouse.pressed ? Core.Theme.color.controlPressed : (item.hovered ? Core.Theme.color.controlHover : Core.Theme.alpha(Core.Theme.color.controlHover, 0))
         }
 
         IconImage {

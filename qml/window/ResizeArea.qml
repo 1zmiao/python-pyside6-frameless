@@ -6,8 +6,8 @@ Item {
 
     property var bridge
     property var windowObject
-    property int grip: 3
-    property int cornerGrip: 12
+    property int grip: 4
+    property int cornerGrip: 6
 
     function begin(edge) {
         if (bridge && windowObject)

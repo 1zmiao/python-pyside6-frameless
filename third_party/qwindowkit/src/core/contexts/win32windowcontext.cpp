@@ -349,42 +349,105 @@ namespace QWK {
         }
         return Win32WindowContext::Outside;
     }
-    static inline LRESULT trimRightBottomResizeHitTest(const POINT &nativeLocalPos,
-                                                       int clientWidth,
-                                                       int clientHeight,
-                                                       LRESULT hitTestResult) {
+    static inline LRESULT trimmedInactiveHitTest(const POINT &nativeLocalPos,
+                                                 int clientWidth,
+                                                 int clientHeight) {
+        if ((nativeLocalPos.x < 0) || (nativeLocalPos.y < 0) ||
+            (nativeLocalPos.x > clientWidth) || (nativeLocalPos.y > clientHeight)) {
+            return HTNOWHERE;
+        }
+        return HTCLIENT;
+    }
+
+    static inline LRESULT trimResizeHitTest(const POINT &nativeWindowPos,
+                                            int windowWidth,
+                                            int windowHeight,
+                                            LRESULT hitTestResult,
+                                            int edgeInset,
+                                            int cornerInset) {
+        const bool containsLeft = (hitTestResult == HTLEFT) ||
+                                  (hitTestResult == HTTOPLEFT) ||
+                                  (hitTestResult == HTBOTTOMLEFT);
+        const bool containsTop = (hitTestResult == HTTOP) ||
+                                 (hitTestResult == HTTOPLEFT) ||
+                                 (hitTestResult == HTTOPRIGHT);
         const bool containsRight = (hitTestResult == HTRIGHT) ||
                                    (hitTestResult == HTTOPRIGHT) ||
                                    (hitTestResult == HTBOTTOMRIGHT);
         const bool containsBottom = (hitTestResult == HTBOTTOM) ||
                                     (hitTestResult == HTBOTTOMLEFT) ||
                                     (hitTestResult == HTBOTTOMRIGHT);
-        if (!containsRight && !containsBottom) {
+        if (!containsLeft && !containsTop && !containsRight && !containsBottom) {
             return hitTestResult;
         }
-        if (clientWidth <= 0 || clientHeight <= 0) {
+        if (windowWidth <= 0 || windowHeight <= 0) {
             return hitTestResult;
         }
 
-        static constexpr int kVisibleEdgeInset = 1;
-        static constexpr int kCornerVisibleEdgeInset = 10;
-        const bool isCorner = (hitTestResult == HTBOTTOMRIGHT);
-        const int rightInset = isCorner ? kCornerVisibleEdgeInset : kVisibleEdgeInset;
-        const int bottomInset = isCorner ? kCornerVisibleEdgeInset : kVisibleEdgeInset;
-        const bool rightActive = !containsRight || (nativeLocalPos.x >= clientWidth - rightInset);
-        const bool bottomActive = !containsBottom || (nativeLocalPos.y >= clientHeight - bottomInset);
+        const bool isCorner = (hitTestResult == HTTOPLEFT) ||
+                              (hitTestResult == HTTOPRIGHT) ||
+                              (hitTestResult == HTBOTTOMLEFT) ||
+                              (hitTestResult == HTBOTTOMRIGHT);
+        const int inset = qBound(1, isCorner ? cornerInset : edgeInset, 64);
+        const bool leftActive = !containsLeft ||
+                                ((nativeWindowPos.x >= 0) && (nativeWindowPos.x <= inset));
+        const bool topActive = !containsTop ||
+                               ((nativeWindowPos.y >= 0) && (nativeWindowPos.y <= inset));
+        const int trailingCompensation = isCorner ? 2 : 1;
+        const bool rightActive = !containsRight ||
+                                 ((nativeWindowPos.x >= windowWidth - inset - trailingCompensation) &&
+                                  (nativeWindowPos.x <= windowWidth));
+        const bool bottomActive = !containsBottom ||
+                                  ((nativeWindowPos.y >= windowHeight - inset - trailingCompensation) &&
+                                   (nativeWindowPos.y <= windowHeight));
 
+        if (hitTestResult == HTLEFT) {
+            return leftActive ? HTLEFT : HTCLIENT;
+        }
+        if (hitTestResult == HTTOP) {
+            return topActive ? HTTOP : HTCLIENT;
+        }
         if (hitTestResult == HTRIGHT) {
             return rightActive ? HTRIGHT : HTCLIENT;
         }
         if (hitTestResult == HTBOTTOM) {
             return bottomActive ? HTBOTTOM : HTCLIENT;
         }
+        if (hitTestResult == HTTOPLEFT) {
+            if (topActive && leftActive) {
+                return HTTOPLEFT;
+            }
+            if (topActive) {
+                return HTTOP;
+            }
+            if (leftActive) {
+                return HTLEFT;
+            }
+            return HTCLIENT;
+        }
         if (hitTestResult == HTTOPRIGHT) {
-            return rightActive ? HTTOPRIGHT : HTTOP;
+            if (topActive && rightActive) {
+                return HTTOPRIGHT;
+            }
+            if (topActive) {
+                return HTTOP;
+            }
+            if (rightActive) {
+                return HTRIGHT;
+            }
+            return HTCLIENT;
         }
         if (hitTestResult == HTBOTTOMLEFT) {
-            return bottomActive ? HTBOTTOMLEFT : HTLEFT;
+            if (bottomActive && leftActive) {
+                return HTBOTTOMLEFT;
+            }
+            if (bottomActive) {
+                return HTBOTTOM;
+            }
+            if (leftActive) {
+                return HTLEFT;
+            }
+            return HTCLIENT;
         }
         if (hitTestResult == HTBOTTOMRIGHT) {
             if (rightActive && bottomActive) {
@@ -1081,6 +1144,11 @@ namespace QWK {
             return true;
         }
 
+        if (key == QStringLiteral("qrounded-resize-edge-inset") ||
+            key == QStringLiteral("qrounded-resize-corner-inset")) {
+            return true;
+        }
+
         if (key == QStringLiteral("extra-margins")) {
             auto margins = qmargins2margins(attribute.value<QMargins>());
             return SUCCEEDED(apis.pDwmExtendFrameIntoClientArea(hwnd, &margins));
@@ -1723,6 +1791,14 @@ namespace QWK {
                 POINT nativeGlobalPos{GET_X_LPARAM(lParam), GET_Y_LPARAM(lParam)};
                 POINT nativeLocalPos = nativeGlobalPos;
                 ::ScreenToClient(hWnd, &nativeLocalPos);
+                RECT windowRect{0, 0, 0, 0};
+                ::GetWindowRect(hWnd, &windowRect);
+                POINT nativeWindowPos{
+                    nativeGlobalPos.x - windowRect.left,
+                    nativeGlobalPos.y - windowRect.top,
+                };
+                const int windowWidth = RECT_WIDTH(windowRect);
+                const int windowHeight = RECT_HEIGHT(windowRect);
 
                 RECT clientRect{0, 0, 0, 0};
                 ::GetClientRect(hWnd, &clientRect);
@@ -1732,23 +1808,38 @@ namespace QWK {
                 QPoint qtScenePos = QHighDpi::fromNativeLocalPosition(point2qpoint(nativeLocalPos),
                                                                       m_windowHandle.data());
 
-                int frameSize = getResizeBorderThickness(hWnd);
-                // Keep the left/top native-feeling resize areas, but do not let
-                // the right/bottom resize hit-test occupy several visible client
-                // pixels. Those edges sit next to scrollbars and controls in this
-                // template, so only the actual visible edge should resize.
-                static constexpr int kRightBottomVisibleEdgeInset = 4;
-                static constexpr int kCornerVisibleEdgeInset = kRightBottomVisibleEdgeInset + 6;
+                const int configuredEdgeInset =
+                    windowAttribute(QStringLiteral("qrounded-resize-edge-inset")).toInt();
+                const int configuredCornerInset =
+                    windowAttribute(QStringLiteral("qrounded-resize-corner-inset")).toInt();
+                const int visibleEdgeInset =
+                    qBound(1, configuredEdgeInset > 0 ? configuredEdgeInset : static_cast<int>(getResizeBorderThickness(hWnd)), 32);
+                const int cornerVisibleEdgeInset =
+                    qBound(visibleEdgeInset,
+                           configuredCornerInset > 0 ? configuredCornerInset : visibleEdgeInset,
+                           64);
 
                 bool isFixedWidth = isHostWidthFixed();
                 bool isFixedHeight = isHostHeightFixed();
                 bool isFixedSize = isHostSizeFixed();
-                bool isInLeftBorder = nativeLocalPos.x <= frameSize;
-                bool isInTopBorder = nativeLocalPos.y <= frameSize;
-                bool isInRightBorder = nativeLocalPos.x >= clientWidth - kRightBottomVisibleEdgeInset;
-                bool isInBottomBorder = nativeLocalPos.y >= clientHeight - kRightBottomVisibleEdgeInset;
-                bool isInRightCornerBorder = nativeLocalPos.x >= clientWidth - kCornerVisibleEdgeInset;
-                bool isInBottomCornerBorder = nativeLocalPos.y >= clientHeight - kCornerVisibleEdgeInset;
+                bool isInLeftBorder = nativeWindowPos.x >= 0 && nativeWindowPos.x <= visibleEdgeInset;
+                bool isInTopBorder = nativeWindowPos.y >= 0 && nativeWindowPos.y <= visibleEdgeInset;
+                bool isInRightBorder =
+                    nativeWindowPos.x >= windowWidth - visibleEdgeInset - 1 &&
+                    nativeWindowPos.x <= windowWidth;
+                bool isInBottomBorder =
+                    nativeWindowPos.y >= windowHeight - visibleEdgeInset - 1 &&
+                    nativeWindowPos.y <= windowHeight;
+                bool isInLeftCornerBorder =
+                    nativeWindowPos.x >= 0 && nativeWindowPos.x <= cornerVisibleEdgeInset;
+                bool isInTopCornerBorder =
+                    nativeWindowPos.y >= 0 && nativeWindowPos.y <= cornerVisibleEdgeInset;
+                bool isInRightCornerBorder =
+                    nativeWindowPos.x >= windowWidth - cornerVisibleEdgeInset - 2 &&
+                    nativeWindowPos.x <= windowWidth;
+                bool isInBottomCornerBorder =
+                    nativeWindowPos.y >= windowHeight - cornerVisibleEdgeInset - 2 &&
+                    nativeWindowPos.y <= windowHeight;
                 bool isInTitleBar = isInTitleBarDraggableArea(qtScenePos);
                 WindowAgentBase::SystemButton sysButtonType = WindowAgentBase::Unknown;
                 bool isInCaptionButtons = isInSystemButtons(qtScenePos, &sysButtonType);
@@ -1763,10 +1854,11 @@ namespace QWK {
                     // this is also the normal behavior of a native Win32 window (but only when the
                     // window is not maximized/fullscreen/minimized, of course).
                     if (isWindowNoState(hWnd)) {
-                        static constexpr const quint8 kBorderSize = 2;
-                        bool isTop = nativeLocalPos.y <= kBorderSize;
-                        bool isLeft = nativeLocalPos.x <= kBorderSize;
-                        bool isRight = nativeLocalPos.x > clientWidth - kBorderSize;
+                        bool isTop = isInTopBorder || isInTopCornerBorder;
+                        bool isLeft = isInLeftBorder || isInLeftCornerBorder;
+                        bool isRight = isInRightBorder || isInRightCornerBorder;
+                        bool isTopLeftCorner = isInTopCornerBorder && isInLeftCornerBorder;
+                        bool isTopRightCorner = isInTopCornerBorder && isInRightCornerBorder;
                         if (isTop || isLeft || isRight) {
                             if (isFixedSize || dontOverrideCursor) {
                                 // The user doesn't want the window to be resized, so we tell
@@ -1775,7 +1867,7 @@ namespace QWK {
                                 *result = isInTitleBar ? HTCAPTION : HTCLIENT;
                             } else {
                                 if (isTop) {
-                                    if (isLeft) {
+                                    if (isTopLeftCorner) {
                                         if (isFixedWidth) {
                                             *result = HTTOP;
                                         } else if (isFixedHeight) {
@@ -1783,7 +1875,7 @@ namespace QWK {
                                         } else {
                                             *result = HTTOPLEFT;
                                         }
-                                    } else if (isRight) {
+                                    } else if (isTopRightCorner) {
                                         if (isFixedWidth) {
                                             *result = HTTOP;
                                         } else if (isFixedHeight) {
@@ -1842,12 +1934,19 @@ namespace QWK {
 
                 bool max = isMaximized(hWnd);
                 bool full = isFullScreen(hWnd);
+                // A maximized custom-frame window can have the same rectangle as the monitor on
+                // Win10. Treat fullscreen as exclusive from IsZoomed here, otherwise maximized
+                // title-bar hit testing is misclassified as client area and caption drag restore
+                // never receives WM_NCLBUTTONDOWN.
+                bool realFull = full && !max;
 
                 if (isSystemBorderEnabled()) {
                     // This will handle the left, right and bottom parts of the frame
                     // because we didn't change them.
                     LRESULT originalHitTestResult = ::DefWindowProcW(hWnd, WM_NCHITTEST, 0, lParam);
-                    originalHitTestResult = trimRightBottomResizeHitTest(nativeLocalPos, clientWidth, clientHeight, originalHitTestResult);
+                    originalHitTestResult = trimResizeHitTest(nativeWindowPos, windowWidth, windowHeight,
+                                                             originalHitTestResult, visibleEdgeInset,
+                                                             cornerVisibleEdgeInset);
                     if (originalHitTestResult != HTCLIENT) {
                         // Even if the window is not resizable, we still can't return HTCLIENT here
                         // because when we enter this code path, it means the mouse cursor is
@@ -1901,7 +2000,7 @@ namespace QWK {
                         }
                         return true;
                     }
-                    if (full) {
+                    if (realFull) {
                         *result = HTCLIENT;
                         return true;
                     }
@@ -1939,7 +2038,7 @@ namespace QWK {
                     *result = HTCLIENT;
                     return true;
                 } else {
-                    if (full) {
+                    if (realFull) {
                         *result = HTCLIENT;
                         return true;
                     }
@@ -1989,20 +2088,20 @@ namespace QWK {
                         }
                         return true;
                     } else {
-                        if (isInTopBorder) {
-                            if (isInLeftBorder) {
+                        if (isInTopBorder || (isInTopCornerBorder && (isInLeftCornerBorder || isInRightCornerBorder))) {
+                            if (isInLeftCornerBorder && isInTopCornerBorder) {
                                 *result = HTTOPLEFT;
                                 return true;
                             }
-                            if (isInRightBorder) {
+                            if (isInRightCornerBorder && isInTopCornerBorder) {
                                 *result = HTTOPRIGHT;
                                 return true;
                             }
                             *result = HTTOP;
                             return true;
                         }
-                        if (isInBottomBorder || (isInBottomCornerBorder && isInRightCornerBorder)) {
-                            if (isInLeftBorder) {
+                        if (isInBottomBorder || (isInBottomCornerBorder && (isInLeftCornerBorder || isInRightCornerBorder))) {
+                            if (isInLeftCornerBorder && isInBottomCornerBorder) {
                                 *result = HTBOTTOMLEFT;
                                 return true;
                             }

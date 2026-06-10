@@ -16,7 +16,7 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: Core.Theme.radius.button
-        color: mouse.containsMouse && root.available ? Core.Theme.color.controlHover : "transparent"
+        color: mouse.containsMouse && root.available ? Core.Theme.color.controlHover : Core.Theme.alpha(Core.Theme.color.controlHover, 0)
     }
 
     Text {

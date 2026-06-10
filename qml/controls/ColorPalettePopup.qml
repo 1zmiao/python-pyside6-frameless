@@ -22,10 +22,25 @@ Popup {
     property bool _copying: false
     property double _closedAt: 0
     property bool _suppressCloseStamp: false
+    property bool _previewDirty: false
+    property bool _cancelling: false
 
     signal colorSelected(string colorValue)
 
-    onClosed: { if (!root._suppressCloseStamp) root._closedAt = Date.now(); root._suppressCloseStamp = false }
+    onClosed: {
+        if (root._previewDirty && !root._cancelling)
+            root.commitColor()
+        root._cancelling = false
+        if (!root._suppressCloseStamp)
+            root._closedAt = Date.now()
+        root._suppressCloseStamp = false
+        if (typeof App !== "undefined" && App) {
+            if (App.trimMemoryNow)
+                Qt.callLater(App.trimMemoryNow)
+            else if (App.trimMemory)
+                Qt.callLater(App.trimMemory)
+        }
+    }
 
     background: Item {
         PanelShadow { anchors.fill: panel; radius: Core.Theme.radius.popup }
@@ -58,6 +73,7 @@ Popup {
             text: "拖动色轮实时预览主题色；色值可复制，取消可恢复打开面板前的颜色。"
             color: Core.Theme.color.mutedText
             wrapMode: Text.WordWrap
+            lineHeight: Core.Theme.bodyLineHeight
             font.pixelSize: Core.Theme.sp(12)
         }
 
@@ -115,6 +131,8 @@ Popup {
                     if (pressed)
                         root.pick(mouse.x, mouse.y)
                 }
+                onReleased: root.commitColor()
+                onCanceled: root.commitColor()
             }
         }
 
@@ -135,6 +153,49 @@ Popup {
                 root.valueBrightness = value
                 root.applyColor()
             }
+            onPressedChanged: {
+                if (!pressed)
+                    root.commitColor()
+            }
+            background: Item {
+                x: valueSlider.leftPadding
+                y: valueSlider.topPadding + valueSlider.availableHeight / 2 - height / 2
+                implicitWidth: Core.Theme.dp(200)
+                implicitHeight: Core.Theme.dp(18)
+                width: valueSlider.availableWidth
+                height: implicitHeight
+
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: parent.width
+                    height: Core.Theme.dp(4)
+                    radius: 2
+                    color: Core.Theme.mode === "dark" ? Core.Theme.alpha(Qt.lighter(Core.Theme.primary, 1.42), 0.46) : Core.Theme.primarySoft
+                    Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+                }
+
+                Rectangle {
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: valueSlider.visualPosition * parent.width
+                    height: Core.Theme.dp(4)
+                    radius: 2
+                    color: Core.Theme.primary
+                    Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+                }
+
+            }
+            handle: Rectangle {
+                x: valueSlider.leftPadding + valueSlider.visualPosition * (valueSlider.availableWidth - width)
+                y: valueSlider.topPadding + valueSlider.availableHeight / 2 - height / 2
+                width: Core.Theme.dp(20)
+                height: Core.Theme.dp(20)
+                radius: width / 2
+                color: Core.Theme.primary
+                border.color: Core.Theme.mode === "dark" ? Core.Theme.alpha(Core.Theme.white, 0.86) : Core.Theme.color.card
+                border.width: 2
+                Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+                Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+            }
         }
 
         Row {
@@ -149,6 +210,7 @@ Popup {
                 color: root.currentHex
                 border.color: Core.Theme.color.outline
                 border.width: 1
+                Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
 
                 Text {
                     anchors.centerIn: parent
@@ -185,6 +247,8 @@ Popup {
                 color: hexInput.activeFocus ? Core.Theme.color.fieldFocus : Core.Theme.color.field
                 border.color: hexInput.activeFocus ? Core.Theme.color.fieldFocusBorder : Core.Theme.color.outline
                 border.width: 1
+                Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+                Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
 
                 TextInput {
                     id: hexInput
@@ -202,6 +266,7 @@ Popup {
                     selectByMouse: true
                     maximumLength: 7
                     inputMethodHints: Qt.ImhNoPredictiveText | Qt.ImhPreferUppercase
+                    Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
                     onTextEdited: root.applyHexText(text, true)
                     onAccepted: root.applyHexText(text, false)
                     onEditingFinished: {
@@ -225,6 +290,8 @@ Popup {
                 text: "取消"
                 variant: "soft"
                 onClicked: {
+                    root._cancelling = true
+                    root._previewDirty = false
                     App.theme.setPrimaryColor(root.originalHex)
                     root.currentHex = root.originalHex
                     hexInput.text = root.originalHex
@@ -261,7 +328,10 @@ Popup {
         root.currentHex = value
         setFromColor(value)
         root.currentHex = value
-        App.theme.setPrimaryColor(value)
+        if (keepFocus)
+            root.previewColor(value)
+        else
+            root.commitColorValue(value)
         root.colorSelected(value)
         root.copied = false
         return true
@@ -287,8 +357,27 @@ Popup {
     function applyColor() {
         root.currentHex = colorToHex(hsvToRgb(root.hue, root.saturation, root.valueBrightness))
         root.copied = false
-        App.theme.setPrimaryColor(root.currentHex)
+        root.previewColor(root.currentHex)
         root.colorSelected(root.currentHex)
+    }
+
+    function previewColor(value) {
+        root._previewDirty = true
+        if (App.theme.previewPrimaryColor)
+            App.theme.previewPrimaryColor(value)
+        else
+            App.theme.setPrimaryColor(value)
+    }
+
+    function commitColor() {
+        if (!root._previewDirty)
+            return
+        root.commitColorValue(root.currentHex)
+    }
+
+    function commitColorValue(value) {
+        root._previewDirty = false
+        App.theme.setPrimaryColor(value)
     }
 
     function setFromColor(c) {
@@ -375,6 +464,8 @@ Popup {
         setFromColor(Core.Theme.primary)
         root.originalHex = root.currentHex
         root.copied = false
+        root._previewDirty = false
+        root._cancelling = false
         const host = root.parent
         const p = item.mapToItem(host, item.width - root.width, item.height + 8)
         const maxX = host ? Math.max(8, host.width - root.width - 10) : p.x

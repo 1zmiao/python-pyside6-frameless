@@ -26,6 +26,18 @@ def app_root() -> Path:
     return Path(__file__).resolve().parents[2]
 
 
+def runtime_root() -> Path:
+    """Return the directory that contains bundled runtime resources."""
+    if getattr(sys, "frozen", False):
+        bundle_root = getattr(sys, "_MEIPASS", None)
+        if bundle_root:
+            packaged_runtime = Path(bundle_root).resolve() / "run"
+            if packaged_runtime.exists():
+                return packaged_runtime
+            return Path(bundle_root).resolve()
+    return Path(__file__).resolve().parents[2]
+
+
 def app_data_dir() -> Path:
     """Local data directory used by this template.
 

@@ -9,7 +9,7 @@ FramelessWindow {
     showNavToggle: false
     showColorButton: false
     showThemeButton: false
-    showPinButton: false
+    showPinButton: childTopmostEnabled
     title: pageTitle
     width: 760
     height: 520
@@ -19,12 +19,13 @@ FramelessWindow {
     property var parentWindow: null
     property string pageSource: ""
     property string pageTitle: "子窗口"
+    property bool childTopmostEnabled: false
 
     modality: Qt.NonModal
 
     Loader {
         anchors.fill: parent
-        asynchronous: true
+        asynchronous: false
         source: child.pageSource
     }
 
@@ -38,6 +39,31 @@ FramelessWindow {
         }
     }
 
+    function refreshChildTopmostEnabled() {
+        const enabled = (typeof App !== "undefined" && App && App.settings)
+                        ? App.settings.valueOr("performance/childWindowTopmostEnabled", false)
+                        : false
+        if (childTopmostEnabled === enabled)
+            return
+        childTopmostEnabled = enabled
+        if (!enabled && alwaysOnTop) {
+            alwaysOnTop = false
+            if (bridge && bridge.window)
+                bridge.window.setAlwaysOnTop(child, false)
+        }
+    }
+
     onParentWindowChanged: applyParentWindow()
-    Component.onCompleted: applyParentWindow()
+    Component.onCompleted: {
+        refreshChildTopmostEnabled()
+        applyParentWindow()
+    }
+
+    Connections {
+        target: (typeof App !== "undefined" && App && App.settings) ? App.settings : null
+        function onChanged(key, value) {
+            if (key === "performance/childWindowTopmostEnabled")
+                child.refreshChildTopmostEnabled()
+        }
+    }
 }

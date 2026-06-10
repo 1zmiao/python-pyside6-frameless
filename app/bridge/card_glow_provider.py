@@ -14,6 +14,14 @@ class CardGlowImageProvider(QQuickImageProvider):
     def __init__(self) -> None:
         super().__init__(QQuickImageProvider.Image)
 
+    def clear_cache(self) -> None:
+        self._card.cache_clear()
+        self._side.cache_clear()
+        _tinted_glow_template.cache_clear()
+        _tinted_rim_template.cache_clear()
+        _tinted_side_glow_template.cache_clear()
+        _tinted_side_rim_template.cache_clear()
+
     def requestImage(self, image_id: str, size: QSize, requested_size: QSize) -> QImage:  # noqa: N802 - Qt API
         parts = [part for part in image_id.split("/") if part]
         kind = parts[0] if parts else "card"
@@ -32,11 +40,8 @@ class CardGlowImageProvider(QQuickImageProvider):
         return image
 
     @staticmethod
-    @lru_cache(maxsize=10)
+    @lru_cache(maxsize=6)
     def _card(mode: str, color: str, width: int, height: int, radius: int) -> QImage:
-        qcolor = QColor("#" + color.lstrip("#"))
-        if not qcolor.isValid():
-            qcolor = QColor("#537FCD")
         width = max(1, min(1400, int(width)))
         height = max(1, min(700, int(height)))
         radius = max(0, min(80, int(radius)))
@@ -47,8 +52,9 @@ class CardGlowImageProvider(QQuickImageProvider):
         painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
         painter.setRenderHint(QPainter.Antialiasing, True)
 
-        glow = _tint_template(_glow_template(), qcolor, mode, rim=False)
-        rim = _tint_template(_rim_template(), qcolor, mode, rim=True)
+        color_key = _normalize_hex(color)
+        glow = _tinted_glow_template(mode, color_key)
+        rim = _tinted_rim_template(mode, color_key)
 
         glow_h = max(72, min(int(height * 0.70), 220))
         glow_rect = QRectF(0, height - glow_h, width, glow_h)
@@ -90,49 +96,21 @@ class CardGlowImageProvider(QQuickImageProvider):
         return image
 
     @staticmethod
-    @lru_cache(maxsize=6)
+    @lru_cache(maxsize=4)
     def _side(mode: str, color: str, width: int, height: int, radius: int) -> QImage:
-        qcolor = QColor("#" + color.lstrip("#"))
-        if not qcolor.isValid():
-            qcolor = QColor("#537FCD")
         width = max(1, min(96, int(width)))
         height = max(1, min(1400, int(height)))
 
         image = QImage(width, height, QImage.Format_ARGB32)
         image.fill(Qt.transparent)
-        glow_color = _tint(qcolor, mode, rim=False)
-        rim_color = _tint(qcolor, mode, rim=True)
-        glow_strength = 82 if mode == "light" else 58
-        rim_strength = 160 if mode == "light" else 122
 
-        for y in range(height):
-            yn = y / max(1, height - 1)
-            center = math.exp(-(((yn - 0.50) / 0.38) ** 2))
-            upper = math.exp(-(((yn - 0.18) / 0.30) ** 2)) * 0.24
-            lower = math.exp(-(((yn - 0.84) / 0.34) ** 2)) * 0.30
-            vertical = min(1.0, 0.16 + 0.78 * center + upper + lower)
-            glow_width = 0.28 + 0.30 * vertical
-            rim_width = 0.010 + 0.028 * (vertical ** 1.16)
-
-            for x in range(width):
-                distance = (width - 1 - x) / max(1, width - 1)
-                broad = math.exp(-((distance / glow_width) ** 2))
-                rim = math.exp(-((distance / rim_width) ** 2))
-                glow_alpha = int(glow_strength * vertical * (broad ** 1.32))
-                rim_alpha = int(rim_strength * (vertical ** 0.78) * (rim ** 0.92))
-                if glow_alpha <= 0 and rim_alpha <= 0:
-                    continue
-
-                pixel = QColor(0, 0, 0, 0)
-                if glow_alpha > 0:
-                    glow_pixel = QColor(glow_color)
-                    glow_pixel.setAlpha(min(255, glow_alpha))
-                    pixel = glow_pixel
-                if rim_alpha > 0:
-                    rim_pixel = QColor(rim_color)
-                    rim_pixel.setAlpha(min(255, rim_alpha))
-                    pixel = _source_over(pixel, rim_pixel)
-                image.setPixelColor(x, y, pixel)
+        painter = QPainter(image)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        color_key = _normalize_hex(color)
+        painter.drawImage(0, 0, _tinted_side_glow_template(mode, color_key, width, height))
+        painter.drawImage(0, 0, _tinted_side_rim_template(mode, color_key, width, height))
+        painter.end()
         return image
 
 
@@ -141,6 +119,13 @@ def _safe_int(value: str, fallback: int) -> int:
         return int(float(value))
     except Exception:
         return fallback
+
+
+def _normalize_hex(color: str) -> str:
+    qcolor = QColor("#" + str(color).lstrip("#"))
+    if not qcolor.isValid():
+        qcolor = QColor("#537FCD")
+    return qcolor.name(QColor.NameFormat.HexRgb).upper().lstrip("#")
 
 
 def _mix_channel(value: int, target: int, ratio: float) -> int:
@@ -186,6 +171,26 @@ def _tint_template(template: QImage, color: QColor, mode: str, rim: bool) -> QIm
     painter.end()
     return image
 
+
+@lru_cache(maxsize=8)
+def _tinted_glow_template(mode: str, color: str) -> QImage:
+    return _tint_template(_glow_template(), QColor("#" + color), mode, rim=False)
+
+
+@lru_cache(maxsize=8)
+def _tinted_rim_template(mode: str, color: str) -> QImage:
+    return _tint_template(_rim_template(), QColor("#" + color), mode, rim=True)
+
+
+@lru_cache(maxsize=4)
+def _tinted_side_glow_template(mode: str, color: str, width: int, height: int) -> QImage:
+    return _tint_template(_side_glow_template(width, height, mode), QColor("#" + color), mode, rim=False)
+
+
+@lru_cache(maxsize=4)
+def _tinted_side_rim_template(mode: str, color: str, width: int, height: int) -> QImage:
+    return _tint_template(_side_rim_template(width, height, mode), QColor("#" + color), mode, rim=True)
+
 @lru_cache(maxsize=1)
 def _glow_template() -> QImage:
     width, height = 384, 144
@@ -218,6 +223,56 @@ def _rim_template() -> QImage:
             thickness = 0.014 + 0.034 * along
             cross = math.exp(-(abs(yn - 0.92) / thickness) ** 2)
             alpha = int(235 * (along ** 0.72) * cross)
+            if alpha > 0:
+                image.setPixelColor(x, y, QColor(255, 255, 255, min(255, alpha)))
+    return image
+
+
+@lru_cache(maxsize=8)
+def _side_glow_template(width: int, height: int, mode: str) -> QImage:
+    width = max(1, min(96, int(width)))
+    height = max(1, min(1400, int(height)))
+    image = QImage(width, height, QImage.Format_ARGB32)
+    image.fill(Qt.transparent)
+    strength = 82 if mode == "light" else 58
+
+    for y in range(height):
+        yn = y / max(1, height - 1)
+        center = math.exp(-(((yn - 0.50) / 0.38) ** 2))
+        upper = math.exp(-(((yn - 0.18) / 0.30) ** 2)) * 0.24
+        lower = math.exp(-(((yn - 0.84) / 0.34) ** 2)) * 0.30
+        vertical = min(1.0, 0.16 + 0.78 * center + upper + lower)
+        glow_width = 0.28 + 0.30 * vertical
+
+        for x in range(width):
+            distance = (width - 1 - x) / max(1, width - 1)
+            broad = math.exp(-((distance / glow_width) ** 2))
+            alpha = int(strength * vertical * (broad ** 1.32))
+            if alpha > 0:
+                image.setPixelColor(x, y, QColor(255, 255, 255, min(255, alpha)))
+    return image
+
+
+@lru_cache(maxsize=8)
+def _side_rim_template(width: int, height: int, mode: str) -> QImage:
+    width = max(1, min(96, int(width)))
+    height = max(1, min(1400, int(height)))
+    image = QImage(width, height, QImage.Format_ARGB32)
+    image.fill(Qt.transparent)
+    strength = 160 if mode == "light" else 122
+
+    for y in range(height):
+        yn = y / max(1, height - 1)
+        center = math.exp(-(((yn - 0.50) / 0.38) ** 2))
+        upper = math.exp(-(((yn - 0.18) / 0.30) ** 2)) * 0.24
+        lower = math.exp(-(((yn - 0.84) / 0.34) ** 2)) * 0.30
+        vertical = min(1.0, 0.16 + 0.78 * center + upper + lower)
+        rim_width = 0.010 + 0.028 * (vertical ** 1.16)
+
+        for x in range(width):
+            distance = (width - 1 - x) / max(1, width - 1)
+            rim = math.exp(-((distance / rim_width) ** 2))
+            alpha = int(strength * (vertical ** 0.78) * (rim ** 0.92))
             if alpha > 0:
                 image.setPixelColor(x, y, QColor(255, 255, 255, min(255, alpha)))
     return image

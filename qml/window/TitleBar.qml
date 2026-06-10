@@ -23,6 +23,7 @@ Item {
     property bool showColorButton: Core.Theme.showColorButton
     property bool showThemeButton: true
     property bool showPinButton: true
+    property bool showWindowControls: true
     property bool useNativeCaption: false
     // Title bar spacing knobs: adjust these for the whole title-bar layout.
     // Lower titleButtonHeightRatio leaves more vertical gap around title buttons.
@@ -32,7 +33,7 @@ Item {
     property int titleOuterRightMargin: Core.Theme.dp(5)
     property int titleButtonSpacing: Core.Theme.dp(1)
     property int titleButtonSeparatorGap: Core.Theme.dp(12)
-    property int titleTextLeftPadding: showNavToggle ? 0 : Core.Theme.dp(7)
+    property int titleTextLeftPadding: showNavToggle ? Core.Theme.dp(8) : Core.Theme.dp(7)
     property real nativeTitleBarHeight: height
     property real nativeCaptionLeftA: leftArea.x + titleDragBox.x
     property real nativeCaptionRightA: nativeCaptionLeftA + titleDragBox.width
@@ -45,6 +46,7 @@ Item {
     property var paletteButtonItem: paletteButtonLoader.item
     property var themeButtonItem: themeButtonLoader.item
     property var pinButtonItem: pinButtonLoader.item
+    property double colorPopupClosedAt: 0
     property alias minimizeButtonItem: minimizeButton
     property alias maximizeButtonItem: maximizeButton
     property alias closeButtonItem: closeButton
@@ -114,6 +116,7 @@ Item {
         radius: root.frameRadius
         color: Core.Theme.color.titleBar
         antialiasing: true
+        Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
     }
 
     Rectangle {
@@ -122,6 +125,18 @@ Item {
         anchors.bottom: parent.bottom
         height: Math.max(0, parent.height - root.frameRadius)
         color: Core.Theme.color.titleBar
+        Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+    }
+
+    BackgroundRipple {
+        anchors.fill: parent
+        z: 1
+        radius: root.frameRadius
+        startX: parent.width * 0.92
+        startY: parent.height * 0.08
+        delayMs: 0
+        colorRole: "titleBar"
+        opacityScale: 0.82
     }
 
     Rectangle {
@@ -131,6 +146,7 @@ Item {
         z: 3
         height: root.physicalPixel
         color: Core.Theme.color.hairline
+        Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
     }
     Row {
         id: leftArea
@@ -264,14 +280,18 @@ Item {
                 tooltip: "主题色"
                 clickOnPress: true
                 onClicked: {
-                    if (!colorPopupLoader.item)
-                        return
-                    if (colorPopupLoader.item.visible) {
+                    if (colorPopupLoader.item && colorPopupLoader.item.visible) {
                         colorPopupLoader.item.close()
                     } else {
+                        if (Date.now() - root.colorPopupClosedAt < 220)
+                            return
                         if (menuPopupLoader.item)
                             menuPopupLoader.item.close()
-                        colorPopupLoader.item.openNear(paletteButton)
+                        colorPopupLoader.active = true
+                        Qt.callLater(function() {
+                            if (colorPopupLoader.item)
+                                colorPopupLoader.item.openNear(paletteButton)
+                        })
                     }
                 }
                 onRightClicked: function(localX, localY) {
@@ -342,9 +362,9 @@ Item {
             }
         }
 
-        IconButton { id: minimizeButton; width: root.rightButtonSize; height: root.rightButtonSize; anchors.verticalCenter: parent.verticalCenter; iconName: "minimize"; strokeWidth: 0.90; noBorder: true; onClicked: root.minimizeRequested() }
-        IconButton { id: maximizeButton; width: root.rightButtonSize; height: root.rightButtonSize; anchors.verticalCenter: parent.verticalCenter; iconName: root.windowMaximized ? "restore" : "maximize"; strokeWidth: 0.90; noBorder: true; onClicked: root.toggleMaximizeRequested() }
-        IconButton { id: closeButton; width: root.rightButtonSize; height: root.rightButtonSize; anchors.verticalCenter: parent.verticalCenter; iconName: "close"; strokeWidth: 0.90; noBorder: true; onClicked: root.closeRequested() }
+        IconButton { id: minimizeButton; visible: root.showWindowControls; width: visible ? root.rightButtonSize : 0; height: visible ? root.rightButtonSize : 0; anchors.verticalCenter: parent.verticalCenter; iconName: "minimize"; strokeWidth: 0.90; noBorder: true; onClicked: root.minimizeRequested() }
+        IconButton { id: maximizeButton; visible: root.showWindowControls; width: visible ? root.rightButtonSize : 0; height: visible ? root.rightButtonSize : 0; anchors.verticalCenter: parent.verticalCenter; iconName: root.windowMaximized ? "restore" : "maximize"; strokeWidth: 0.90; noBorder: true; onClicked: root.toggleMaximizeRequested() }
+        IconButton { id: closeButton; visible: root.showWindowControls; width: visible ? root.rightButtonSize : 0; height: visible ? root.rightButtonSize : 0; anchors.verticalCenter: parent.verticalCenter; iconName: "close"; strokeWidth: 0.90; noBorder: true; onClicked: root.closeRequested() }
     }
 
     Loader {
@@ -377,8 +397,14 @@ Item {
 
     Loader {
         id: colorPopupLoader
-        active: root.showColorButton
-        sourceComponent: ColorPalettePopup { parent: root.Window.window ? root.Window.window.contentItem : root }
+        active: false
+        sourceComponent: ColorPalettePopup {
+            parent: root.Window.window ? root.Window.window.contentItem : root
+            onClosed: {
+                root.colorPopupClosedAt = Date.now()
+                colorPopupLoader.active = false
+            }
+        }
     }
 }
 

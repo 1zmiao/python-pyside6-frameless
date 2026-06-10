@@ -15,6 +15,7 @@ Item {
     property bool autoLoad: false
     property string storageKey: ""
     property bool autoSave: storageKey.length > 0
+    property bool lazyEncryptedAutoLoad: false
     property int echoMode: TextInput.Normal
     property int secureEchoMode: TextInput.Password
     property int inputMethodHints: Qt.ImhNone
@@ -23,12 +24,15 @@ Item {
     property color placeholderTextColor: Core.Theme.color.mutedText
     property color selectionColor: Core.Theme.color.selection
     property color selectedTextColor: Core.Theme.color.selectedText
+    property bool floatingPlaceholder: true
 
     property string _lastSavedText: ""
     property bool _dirty: false
     property bool _loading: false
+    property bool _encryptedLoadPending: false
     property string _storageModeKey: storageKey.length > 0 ? ("storageModes/" + storageKey) : ""
     property string _revealModeKey: storageKey.length > 0 ? ("fieldRevealModes/" + storageKey) : ""
+    readonly property bool _placeholderFloated: floatingPlaceholder && root.placeholderText.length > 0 && input.text.length > 0
 
     function applyPersistedStorageMode() {
         if (!storageKey || storageKey.length === 0 || typeof App === "undefined" || !App || !App.settings)
@@ -70,6 +74,8 @@ Item {
 
     function saveValue(force, notify) {
         if (!storageKey || storageKey.length === 0 || typeof App === "undefined" || !App)
+            return false
+        if (root._encryptedLoadPending && !force)
             return false
         const textValue = input.text
         if (App.settings && root._storageModeKey.length > 0)
@@ -155,7 +161,13 @@ Item {
         input.text = readStoredValue(defaultValue === undefined ? input.text : defaultValue)
         root._lastSavedText = input.text
         root._dirty = false
+        root._encryptedLoadPending = false
         root._loading = false
+    }
+
+    function ensureDeferredEncryptedLoad() {
+        if (root._encryptedLoadPending)
+            loadStoredValue(input.text)
     }
 
     function cut() { input.cut() }
@@ -163,7 +175,12 @@ Item {
     function paste() { input.paste() }
     function selectAll() { input.selectAll() }
     function clearSelection() { input.deselect() }
-    function forceInputFocus() { input.forceActiveFocus() }
+    function forceInputFocus() { root.ensureDeferredEncryptedLoad(); input.forceActiveFocus() }
+    function ensureContextMenu() {
+        if (!contextMenuLoader.item)
+            contextMenuLoader.active = true
+        return contextMenuLoader.item
+    }
 
     Rectangle {
         id: bg
@@ -172,25 +189,45 @@ Item {
         color: input.activeFocus ? Core.Theme.color.fieldFocus : Core.Theme.color.field
         border.color: input.activeFocus ? Core.Theme.color.fieldFocusBorder : Core.Theme.color.outline
         border.width: 1
-        Behavior on color { ColorAnimation { duration: 100; easing.type: Easing.OutCubic } }
-        Behavior on border.color { ColorAnimation { duration: 100; easing.type: Easing.OutCubic } }
+        Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+        Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
     }
 
     Text {
         id: placeholder
         z: 4
-        anchors.left: parent.left
-        anchors.leftMargin: root.padding
-        anchors.right: trailing.left
-        anchors.rightMargin: Core.Theme.dp(8)
-        anchors.verticalCenter: parent.verticalCenter
-        visible: input.text.length === 0
+        x: root.padding - (root._placeholderFloated ? Core.Theme.dp(4) : 0)
+        y: root._placeholderFloated ? -Core.Theme.dp(7) : Math.round((root.height - height) / 2)
+        width: root._placeholderFloated
+               ? Math.min(implicitWidth + Core.Theme.dp(1), Math.max(0, parent.width - root.padding - trailing.width - Core.Theme.dp(13)))
+               : Math.max(0, parent.width - root.padding - trailing.width - Core.Theme.dp(13))
+        height: implicitHeight
+        visible: root.placeholderText.length > 0 && (input.text.length === 0 || root._placeholderFloated)
         text: root.placeholderText
         color: root.placeholderTextColor
-        opacity: 1.0
-        font.pixelSize: Core.Theme.fontSize.control
+        opacity: root._placeholderFloated ? 0.8 : 1.0
+        font.pixelSize: root._placeholderFloated ? Math.max(Core.Theme.dp(9), Core.Theme.fontSize.caption - Core.Theme.dp(2)) : Core.Theme.fontSize.control
         font.family: Core.Theme.appFontFamily
         elide: Text.ElideRight
+        leftPadding: root._placeholderFloated ? Core.Theme.dp(4) : 0
+        rightPadding: root._placeholderFloated ? Core.Theme.dp(4) : 0
+        Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+        Behavior on x { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+        Behavior on y { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+        Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+
+        Rectangle {
+            anchors.fill: parent
+            anchors.leftMargin: -Core.Theme.dp(1)
+            anchors.rightMargin: -Core.Theme.dp(1)
+            anchors.topMargin: Core.Theme.dp(2)
+            anchors.bottomMargin: Core.Theme.dp(1)
+            z: -1
+            visible: root._placeholderFloated
+            radius: Core.Theme.dp(4)
+            color: input.activeFocus ? Core.Theme.color.fieldFocus : Core.Theme.color.field
+            Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+        }
     }
 
     TextInput {
@@ -212,9 +249,12 @@ Item {
         font.pixelSize: Core.Theme.fontSize.control
         font.family: Core.Theme.appFontFamily
         verticalAlignment: TextInput.AlignVCenter
+        Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+        Behavior on selectionColor { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
         onTextEdited: root.scheduleAutoSave()
         onEditingFinished: { root.editingFinished(); root.scheduleAutoSave() }
         onAccepted: { root.accepted(); root.scheduleAutoSave() }
+        onActiveFocusChanged: if (activeFocus) root.ensureDeferredEncryptedLoad()
     }
 
     Item {
@@ -242,9 +282,12 @@ Item {
         }
     }
 
-    AppContextMenu {
-        id: contextMenu
-        parent: root.Window.window ? root.Window.window.contentItem : root
+    Loader {
+        id: contextMenuLoader
+        active: false
+        sourceComponent: AppContextMenu {
+            parent: root.Window.window ? root.Window.window.contentItem : root
+        }
     }
 
     MouseArea {
@@ -257,7 +300,11 @@ Item {
         propagateComposedEvents: false
         onPressed: function(mouse) {
             mouse.accepted = true
+            root.ensureDeferredEncryptedLoad()
             input.forceActiveFocus()
+            const contextMenu = root.ensureContextMenu()
+            if (!contextMenu)
+                return
             const host = contextMenu.parent
             const p = root.mapToItem(host, mouse.x, mouse.y)
             if (contextMenu.visible)
@@ -279,10 +326,19 @@ Item {
     Component.onCompleted: {
         applyPersistedStorageMode()
         applyPersistedRevealMode()
-        if (autoLoad && storageKey.length > 0)
-            loadStoredValue(input.text)
-        else
+        if (root.encrypted && typeof App !== "undefined" && App && App.secrets && App.secrets.preload)
+            App.secrets.preload()
+        if (autoLoad && storageKey.length > 0) {
+            if (root.lazyEncryptedAutoLoad && root.encrypted) {
+                root._encryptedLoadPending = true
+                root._lastSavedText = input.text
+                root._dirty = false
+            } else {
+                loadStoredValue(input.text)
+            }
+        } else {
             root._lastSavedText = input.text
+        }
     }
 
     Component.onDestruction: {

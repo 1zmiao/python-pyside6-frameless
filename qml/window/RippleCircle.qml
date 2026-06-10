@@ -14,31 +14,38 @@ Item {
     property color rippleColor: "white"
     property real opacityFactor: 0.4
     property bool running: false
+    property real renderScale: 0.68
 
     signal finished()
 
     Canvas {
         id: canvas
-        anchors.fill: parent
+        width: Math.max(1, Math.ceil(root.width * root.renderScale))
+        height: Math.max(1, Math.ceil(root.height * root.renderScale))
+        scale: 1 / root.renderScale
+        transformOrigin: Item.TopLeft
         antialiasing: true
         renderTarget: Canvas.FramebufferObject
         onPaint: {
             const ctx = getContext("2d")
             const w = width
             const h = height
+            const sx = root.renderScale
             ctx.clearRect(0, 0, w, h)
             if (!root.running || root.progress <= 0)
                 return
 
-            const r = Math.max(1, root.progress * root.maxRadius)
-            const soft = Math.max(36, r * 0.18)
+            const r = Math.max(1, root.progress * root.maxRadius * sx)
+            const soft = Math.max(36 * sx, r * 0.18)
             const inner = Math.max(0, r - soft)
 
             ctx.save()
-            roundedRect(ctx, 0, 0, w, h, root.clipRadius)
+            roundedRect(ctx, 0, 0, w, h, root.clipRadius * sx)
             ctx.clip()
 
-            const g = ctx.createRadialGradient(root.centerX, root.centerY, inner, root.centerX, root.centerY, r)
+            const cx = root.centerX * sx
+            const cy = root.centerY * sx
+            const g = ctx.createRadialGradient(cx, cy, inner, cx, cy, r)
             const c = root.rippleColor
             g.addColorStop(0.0, rgba(c, root.opacityFactor))
             g.addColorStop(0.74, rgba(c, root.opacityFactor * 0.70))

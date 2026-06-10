@@ -1,0 +1,6 @@
+<RCC>
+  <qresource prefix="/">
+    <file alias="/qt/qml/FramelessNative">/home/yq/software/frameless_pyside6_template_v30/app/native/prebuilt/linux-x64-py310-qt6.11-system/qml/FramelessNative</file>
+
+  </qresource>
+</RCC>

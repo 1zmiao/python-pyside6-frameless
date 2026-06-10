@@ -12,10 +12,10 @@ QtObject {
     property real controlScale: Math.max(0.90, Math.min(1.24, fontScale))
     property bool showColorButton: (typeof App !== "undefined" && App && App.theme) ? App.theme.showColorButton : true
     property bool lowMemoryMode: (typeof App !== "undefined" && App && App.performance) ? App.performance.lowMemoryMode : false
-    // Prefer platform fonts at startup. Loading the bundled CJK variable font
-    // eagerly increases the base RSS of the main QML window; keep the asset for
-    // projects that need exact typography, but do not load it by default.
-    property string appFontFamily: Qt.platform.os === "windows" ? "Microsoft YaHei UI" : "Noto Sans CJK SC"
+    // Prefer platform fonts at startup. Bundled CJK fonts noticeably increase
+    // the base RSS of the main QML window, so the template keeps system fonts
+    // by default.
+    property string appFontFamily: Qt.platform.os === "windows" ? "Microsoft YaHei UI" : Qt.application.font.family
     property string headingFontFamily: appFontFamily
     property int headingFontWeight: Font.Medium
     property real headingLetterSpacing: 0.58
@@ -71,7 +71,7 @@ QtObject {
         property int titleBarHeight: Math.max(30, theme.dp(34))
         property int controlHeight: Math.max(30, theme.dp(30))
         property int fieldHeight: Math.max(38, theme.dp(40))
-        property int navWidthDefault: Math.max(98, theme.dp(106))
+        property int navWidthDefault: Math.max(42, theme.dp(46))
         property int navWidthMax: Math.max(126, theme.dp(132))
         property int navIconOnlyThreshold: Math.max(54, theme.dp(62))
         property int navIconWidth: Math.max(42, theme.dp(46))
@@ -103,6 +103,13 @@ QtObject {
     property int fontTitle: fontSize.title
     property int fontButton: fontSize.control
     property int fontSectionTitle: fontSize.subtitle
+    property real bodyLineHeight: 1.34
+    property real captionLineHeight: 1.28
+    property int colorTransitionMs: 420
+    property bool surfaceTransitionActive: false
+    property string surfaceTransitionMode: ""
+    property int animatedColorTransitionMs: colorTransitionMs
+    property int controlTransitionMs: 110
 
     property QtObject color: QtObject {
         property color surface: theme.mix(theme.baseSurface, theme.primary, theme.mode === "dark" ? 0.10 : 0.045)
@@ -125,15 +132,15 @@ QtObject {
         property color outline: theme.mix(theme.baseOutline, theme.primary, theme.mode === "dark" ? 0.18 : 0.14)
         property color outlineAccent: theme.primaryOutline
         property color cardOutline: theme.mode === "dark" ? theme.alpha(Qt.lighter(theme.primary, 1.65), 0.53) : theme.primaryOutline
-        property color windowEdge: theme.mode === "dark" ? theme.alpha(theme.white, 0.16) : theme.alpha(theme.primary, 0.28)
+        property color windowEdge: theme.mode === "dark" ? theme.alpha(theme.white, 0.16) : "transparent"
         property color hairline: theme.mix(theme.baseOutline, theme.primary, theme.mode === "dark" ? 0.12 : 0.08)
 
         property color controlHover: theme.mode === "dark"
             ? theme.mix(theme.baseSurfaceAlt, Qt.lighter(theme.primary, 1.65), 0.62)
-            : theme.mix(theme.baseSurfaceAlt, theme.primary, 0.20)
+            : theme.mix(theme.baseSurfaceAlt, theme.primary, 0.036)
         property color controlPressed: theme.mode === "dark"
             ? theme.mix(theme.baseSurfaceAlt, Qt.lighter(theme.primary, 1.65), 0.76)
-            : theme.mix(theme.baseSurfaceAlt, theme.primary, 0.30)
+            : theme.mix(theme.baseSurfaceAlt, theme.primary, 0.064)
         property color controlChecked: theme.primaryContainer
         property color field: theme.mix(theme.baseCard, theme.primary, theme.mode === "dark" ? 0.08 : 0.02)
         property color fieldFocus: theme.mix(theme.baseCard, theme.primary, theme.mode === "dark" ? 0.16 : 0.06)
@@ -150,7 +157,35 @@ QtObject {
         property color menuShadow: theme.mode === "dark" ? "#C0000000" : "#33000000"
     }
 
-    function previewSurface(nextMode) { return nextMode === "dark" ? "#10141C" : "#FFFBFE" }
+    function baseSurfaceForMode(nextMode) { return Qt.color(nextMode === "dark" ? "#10141C" : "#FFFBFE") }
+    function baseSurfaceAltForMode(nextMode) { return Qt.color(nextMode === "dark" ? "#151B25" : "#F8F7FC") }
+    function baseCardForMode(nextMode) { return Qt.color(nextMode === "dark" ? "#1D2430" : "#FFFFFF") }
+    function baseOutlineForMode(nextMode) { return Qt.color(nextMode === "dark" ? "#465164" : "#D6D9E3") }
+    function primaryForMode(nextMode) {
+        if (typeof App !== "undefined" && App && App.theme && App.theme.primaryColorForMode)
+            return Qt.color(App.theme.primaryColorForMode(nextMode))
+        return primary
+    }
+    function previewSurface(nextMode) { return baseSurfaceForMode(nextMode) }
+    function previewColor(role, nextMode) {
+        const surface = baseSurfaceForMode(nextMode)
+        const surfaceAlt = baseSurfaceAltForMode(nextMode)
+        const cardBase = baseCardForMode(nextMode)
+        const outlineBase = baseOutlineForMode(nextMode)
+        const previewPrimary = primaryForMode(nextMode)
+        if (role === "outline")
+            return mix(outlineBase, previewPrimary, nextMode === "dark" ? 0.18 : 0.14)
+        if (role === "titleBar")
+            return mix(surfaceAlt, previewPrimary, nextMode === "dark" ? 0.25 : 0.10)
+        if (role === "sidebar")
+            return mix(surfaceAlt, previewPrimary, nextMode === "dark" ? 0.30 : 0.120)
+        if (role === "card")
+            return mix(cardBase, previewPrimary, nextMode === "dark" ? 0.12 : 0.045)
+        return mix(surface, previewPrimary, nextMode === "dark" ? 0.10 : 0.045)
+    }
+    function previewRipple(nextMode) {
+        return nextMode === "dark" ? Qt.lighter(primaryForMode(nextMode), 1.42) : Qt.lighter(primaryForMode(nextMode), 1.12)
+    }
 
 
 

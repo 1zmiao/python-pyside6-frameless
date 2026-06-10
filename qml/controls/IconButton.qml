@@ -21,6 +21,7 @@ Item {
     property int acceptedButtons: Qt.LeftButton | Qt.RightButton
     property bool clickOnPress: false
     property color iconColor: (checked || accent) ? (Core.Theme.mode === "dark" ? Core.Theme.white : Core.Theme.primaryStrong) : Core.Theme.color.icon
+    property int visualTransitionMs: (hovered || pressed) ? Core.Theme.controlTransitionMs : Core.Theme.animatedColorTransitionMs
 
     signal clicked()
     signal rightClicked(real x, real y)
@@ -31,8 +32,6 @@ Item {
     implicitHeight: height
 
     function bgColor() {
-        if (!interactive)
-            return Core.Theme.mode === "dark" ? "#2A303B" : "#E8EAEE"
         if (root.accent && !(root.noBorder || root.borderless || root.flat))
             return pressed ? Core.Theme.primaryPressed : (hovered ? Core.Theme.primaryHover : Core.Theme.primary)
         if (pressed)
@@ -41,15 +40,17 @@ Item {
             return Core.Theme.color.controlHover
         if (checked && !(noBorder || borderless || flat))
             return Core.Theme.color.navActive
-        return "transparent"
+        return Core.Theme.alpha(Core.Theme.color.controlHover, 0)
     }
 
     Rectangle {
         anchors.fill: parent
         radius: Core.Theme.radius.button
         color: root.bgColor()
-        border.color: (!(root.borderless || root.noBorder || root.flat || !root.showBorder) && root.checked) ? Core.Theme.primaryOutline : "transparent"
+        border.color: (!(root.borderless || root.noBorder || root.flat || !root.showBorder) && root.checked) ? Core.Theme.primaryOutline : Core.Theme.alpha(Core.Theme.primaryOutline, 0)
         border.width: (!(root.borderless || root.noBorder || root.flat || !root.showBorder) && root.checked) ? 1 : 0
+        Behavior on color { ColorAnimation { duration: root.visualTransitionMs; easing.type: Easing.InOutCubic } }
+        Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
     }
 
     IconImage {

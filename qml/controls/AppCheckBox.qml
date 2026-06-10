@@ -8,6 +8,7 @@ CheckBox {
     property string storageKey: ""
     property bool autoLoad: false
     property bool autoSave: storageKey.length > 0
+    property bool wrapText: false
     property bool _loading: false
 
     function toastHost() {
@@ -20,7 +21,7 @@ CheckBox {
     }
 
     spacing: Math.max(7, Math.round(Core.Theme.fontSize.control * 0.60))
-    implicitHeight: Math.max(Core.Theme.metrics.controlHeight, indicator.implicitHeight + 6)
+    implicitHeight: Math.max(Core.Theme.metrics.controlHeight, indicator.implicitHeight + 6, contentItem ? contentItem.implicitHeight + 6 : 0)
 
     function saveValue() {
         if (!autoSave || storageKey.length === 0 || typeof App === "undefined" || !App || !App.settings)
@@ -39,9 +40,12 @@ CheckBox {
         y: parent.height / 2 - height / 2
         radius: Math.max(4, Math.round(width * 0.25))
         color: root.checked ? Core.Theme.primary : Core.Theme.primarySoft
-        border.color: root.checked ? Core.Theme.primary : Core.Theme.color.outlineAccent
+        border.color: root.checked
+                      ? (Core.Theme.mode === "dark" ? Qt.lighter(Core.Theme.primary, 1.55) : Core.Theme.primary)
+                      : (Core.Theme.mode === "dark" ? Core.Theme.alpha(Qt.lighter(Core.Theme.primary, 1.95), 0.92) : Core.Theme.color.outlineAccent)
         border.width: 1
-        Behavior on color { ColorAnimation { duration: 95; easing.type: Easing.OutCubic } }
+        Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+        Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
 
         Text {
             anchors.centerIn: parent
@@ -60,8 +64,9 @@ CheckBox {
         font.pixelSize: Core.Theme.fontSize.control
         font.family: Core.Theme.appFontFamily
         leftPadding: root.indicator.width + root.spacing
-        elide: Text.ElideRight
-        Behavior on color { ColorAnimation { duration: 120 } }
+        wrapMode: root.wrapText ? Text.WordWrap : Text.NoWrap
+        elide: root.wrapText ? Text.ElideNone : Text.ElideRight
+        Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
     }
 
     onToggled: if (!_loading) saveValue()

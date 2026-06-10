@@ -8,6 +8,12 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
 find_package(Qt6 6.6 REQUIRED COMPONENTS Core Gui Qml Quick)
+if(UNIX AND NOT APPLE)
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(XCB QUIET xcb)
+    endif()
+endif()
 
 get_filename_component(FRAMELESS_NATIVE_PROJECT_ROOT "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
 set(QWINDOWKIT_SOURCE_DIR "${FRAMELESS_NATIVE_PROJECT_ROOT}/third_party/qwindowkit" CACHE PATH "QWindowKit source directory")
@@ -23,7 +29,7 @@ set(QWINDOWKIT_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(QWINDOWKIT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(QWINDOWKIT_BUILD_DOCUMENTATIONS OFF CACHE BOOL "" FORCE)
 set(QWINDOWKIT_INSTALL OFF CACHE BOOL "" FORCE)
-# The project-root b.bat builds this module twice:
+# scripts/build_windows.bat builds this module twice:
 # - system: QWindowKit keeps Windows system borders for the trusted Win11 path.
 # - custom: QWindowKit system borders are disabled for Win10/VM custom chrome.
 
@@ -45,6 +51,14 @@ qt_add_qml_module(FramelessNative
     SOURCES
         src/external_shadow_controller.h
         src/external_shadow_controller.cpp
+        src/native_child_window_manager.h
+        src/native_child_window_manager.cpp
+        src/native_inline_drag_area.h
+        src/native_inline_drag_area.cpp
+        src/native_inline_input_router.h
+        src/native_inline_input_router.cpp
+        src/native_widget_host_agent.h
+        src/native_widget_host_agent.cpp
         src/native_window_agent.h
         src/native_window_agent.cpp
 )
@@ -71,4 +85,10 @@ target_link_libraries(FramelessNative PRIVATE
 
 if(WIN32)
     target_link_libraries(FramelessNative PRIVATE dwmapi user32 gdi32)
+endif()
+
+if(XCB_FOUND)
+    target_compile_definitions(FramelessNative PRIVATE FRAMELESS_NATIVE_HAS_XCB=1)
+    target_include_directories(FramelessNative PRIVATE ${XCB_INCLUDE_DIRS})
+    target_link_libraries(FramelessNative PRIVATE ${XCB_LIBRARIES})
 endif()

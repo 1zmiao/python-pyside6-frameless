@@ -19,6 +19,7 @@ Item {
     property int horizontalPadding: Core.Theme.dp(24)
     property int labelPixelSize: Core.Theme.fontSize.control
     property int radius: Core.Theme.radius.button
+    property int visualTransitionMs: (hovered || pressed) ? Core.Theme.controlTransitionMs : Core.Theme.animatedColorTransitionMs
 
     signal clicked()
 
@@ -42,15 +43,17 @@ Item {
         if (pressed) return Core.Theme.color.controlPressed
         if (hovered) return Core.Theme.color.controlHover
         if (isSoft) return Core.Theme.primarySoft
-        return "transparent"
+        return Core.Theme.alpha(Core.Theme.color.controlHover, 0)
     }
 
     Rectangle {
         anchors.fill: parent
         radius: root.radius
         color: root.bgColor()
-        border.color: root.isFilled || root.isSoft ? Core.Theme.primaryOutline : "transparent"
+        border.color: root.isFilled || root.isSoft ? Core.Theme.primaryOutline : Core.Theme.alpha(Core.Theme.primaryOutline, 0)
         border.width: root.isFilled || root.isSoft ? 1 : 0
+        Behavior on color { ColorAnimation { duration: root.visualTransitionMs; easing.type: Easing.InOutCubic } }
+        Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
     }
 
     Text {
@@ -61,6 +64,7 @@ Item {
         font.family: Core.Theme.appFontFamily
         font.bold: root.isFilled || root.active
         elide: Text.ElideRight
+        Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
     }
 
     MouseArea {

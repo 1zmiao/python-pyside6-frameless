@@ -204,7 +204,8 @@ class _WindowsHitTestFilter(QAbstractNativeEventFilter):
             scale = max(1.0, float(dpi) / 96.0)
         except Exception:
             scale = 1.0
-        border = max(2, int(round(2 * scale)))
+        border = max(1, int(round(3 * scale)))
+        corner = max(border, int(round(5 * scale)))
         inset_left, inset_top, inset_right, inset_bottom = self._controller._shadow_insets(win)
         left_px = max(0, int(round(float(inset_left) * scale)))
         top_px = max(0, int(round(float(inset_top) * scale)))
@@ -228,18 +229,22 @@ class _WindowsHitTestFilter(QAbstractNativeEventFilter):
 
         self._controller._set_window_input_passthrough(hwnd, win, False)
         if not self._controller._is_maximized_or_fullscreen(win):
+            left_corner = visual_left <= x < visual_left + corner
+            right_corner = visual_right - corner <= x < visual_right
+            top_corner = visual_top <= y < visual_top + corner
+            bottom_corner = visual_bottom - corner <= y < visual_bottom
             left = visual_left <= x < visual_left + border
             right = visual_right - border <= x < visual_right
             top = visual_top <= y < visual_top + border
             bottom = visual_bottom - border <= y < visual_bottom
 
-            if top and left:
+            if top_corner and left_corner:
                 return self.HTTOPLEFT
-            if top and right:
+            if top_corner and right_corner:
                 return self.HTTOPRIGHT
-            if bottom and left:
+            if bottom_corner and left_corner:
                 return self.HTBOTTOMLEFT
-            if bottom and right:
+            if bottom_corner and right_corner:
                 return self.HTBOTTOMRIGHT
             if left:
                 return self.HTLEFT
@@ -394,6 +399,10 @@ class WindowController(QObject):
     @Property(bool, constant=True)
     def customChromeEnabled(self) -> bool:
         return bool(use_custom_window_chrome())
+
+    @Property(bool, constant=True)
+    def systemChromeEnabled(self) -> bool:
+        return not bool(use_custom_window_chrome())
 
     @Property(bool, constant=True)
     def customShadowEnabled(self) -> bool:
@@ -740,7 +749,8 @@ class WindowController(QObject):
     def isSnappedState(self, win: QWindow) -> bool:
         if win is None or not self._is_valid_window(win):
             return False
-        return self._looks_like_snapped_window(win, self._key(win))
+        kind = self._snap_geometry_kind(win)
+        return kind in {"left", "right"}
 
     @Slot(QObject, result=str)
     def snapState(self, win: QWindow) -> str:
@@ -749,7 +759,7 @@ class WindowController(QObject):
         if self._native_interaction_active(win):
             return ""
         kind = self._snap_geometry_kind(win)
-        return kind if kind in {"left", "right", "vertical"} else ""
+        return kind if kind in {"left", "right"} else ""
 
     def _prepare_native_caption_move(self, win: QWindow, hwnd_value: int, lparam: int | None = None) -> None:
         if sys.platform != "win32" or not self._is_valid_window(win):
@@ -1327,7 +1337,7 @@ class WindowController(QObject):
             except Exception:
                 pass
         visibility = self._settings.value_py(f"windows/{key}/visibility", "normal")
-        always_on_top = bool(self._settings.value_py(f"windows/{key}/alwaysOnTop", False))
+        always_on_top = self._bool_setting(f"windows/{key}/alwaysOnTop", False) and self._topmost_feature_enabled_for_key(key)
         if always_on_top:
             self.setAlwaysOnTop(win, True)
         if visibility == "maximized":
@@ -1344,6 +1354,7 @@ class WindowController(QObject):
         if win is None:
             return
         key = self._key(win)
+        child_key = self._is_child_window_key(key)
         saved = self._settings.value_py(f"windows/{key}/normalGeometry", None)
         if isinstance(saved, dict):
             try:
@@ -1354,7 +1365,17 @@ class WindowController(QObject):
                     self._normal_frame_geometries[key] = QRect(geom)
             except Exception:
                 pass
-        always_on_top = bool(self._settings.value_py(f"windows/{key}/alwaysOnTop", False))
+        if child_key:
+            self._settings.remove_value_py(f"windows/{key}/alwaysOnTop")
+            try:
+                win.setProperty("alwaysOnTop", False)
+            except Exception:
+                pass
+        always_on_top = (
+            not child_key
+            and self._bool_setting(f"windows/{key}/alwaysOnTop", False)
+            and self._topmost_feature_enabled_for_key(key)
+        )
         if always_on_top:
             self.setAlwaysOnTop(win, True)
         visibility = str(self._settings.value_py(f"windows/{key}/visibility", "normal"))
@@ -1362,8 +1383,6 @@ class WindowController(QObject):
             QTimer.singleShot(0, lambda win=win: self._safe_window_call(win, "showMaximized"))
         elif visibility == "fullscreen":
             QTimer.singleShot(0, lambda win=win: self._safe_window_call(win, "showFullScreen"))
-        else:
-            QTimer.singleShot(0, lambda win=win: self._safe_window_call(win, "showNormal"))
 
     @Slot(QObject)
     def saveNativeManagedWindowState(self, win: QWindow) -> None:
@@ -1371,6 +1390,7 @@ class WindowController(QObject):
         if win is None:
             return
         key = self._key(win)
+        child_key = self._is_child_window_key(key)
         visibility = self._visibility_name(win)
         if visibility not in ("maximized", "fullscreen", "minimized"):
             geometry = QRect(win.geometry())
@@ -1383,10 +1403,15 @@ class WindowController(QObject):
                 )
             visibility = "normal"
         self._settings.set_value_py(f"windows/{key}/visibility", visibility)
-        try:
-            self._settings.set_value_py(f"windows/{key}/alwaysOnTop", bool(win.property("alwaysOnTop")))
-        except Exception:
-            pass
+        if child_key:
+            self._settings.remove_value_py(f"windows/{key}/alwaysOnTop")
+        elif self._topmost_feature_enabled_for_key(key):
+            try:
+                self._settings.set_value_py(f"windows/{key}/alwaysOnTop", bool(win.property("alwaysOnTop")))
+            except Exception:
+                pass
+        else:
+            self._settings.remove_value_py(f"windows/{key}/alwaysOnTop")
 
     @Slot(QObject)
     def saveWindowState(self, win: QWindow) -> None:
@@ -1425,6 +1450,10 @@ class WindowController(QObject):
     def setAlwaysOnTop(self, win: QWindow, enabled: bool) -> None:
         if win is None:
             return
+        key = self._key(win)
+        persist_topmost = not self._is_child_window_key(key)
+        if not self._topmost_feature_enabled_for_key(key):
+            enabled = False
         flags = win.flags()
         if sys.platform == "win32" and self._is_valid_window(win):
             try:
@@ -1446,12 +1475,28 @@ class WindowController(QObject):
             win.setProperty("alwaysOnTop", bool(enabled))
         except Exception:
             pass
-        key = self._key(win)
-        self._settings.set_value_py(f"windows/{key}/alwaysOnTop", bool(enabled))
-        if not (sys.platform == "win32" and self._is_valid_window(win)):
+        if persist_topmost and self._topmost_feature_enabled_for_key(key):
+            self._settings.set_value_py(f"windows/{key}/alwaysOnTop", bool(enabled))
+        else:
+            self._settings.remove_value_py(f"windows/{key}/alwaysOnTop")
+        if enabled and not (sys.platform == "win32" and self._is_valid_window(win)):
             win.show()
             self._raise_window(win)
         self.refreshNativeFrame(win)
+
+    def _topmost_feature_enabled_for_key(self, key: str) -> bool:
+        if not self._is_child_window_key(key):
+            return True
+        return self._bool_setting("performance/childWindowTopmostEnabled", False)
+
+    def _is_child_window_key(self, key: str) -> bool:
+        return str(key).startswith("child-")
+
+    def _bool_setting(self, key: str, default: bool = False) -> bool:
+        value = self._settings.value_py(key, default)
+        if isinstance(value, str):
+            return value.strip().lower() in ("1", "true", "yes", "on")
+        return bool(value)
 
     @Slot(str, str, "QVariant")
     def handleWindowEvent(self, window_key: str, event_type: str, payload) -> None:
@@ -1717,19 +1762,12 @@ class WindowController(QObject):
                 win.showNormal()
                 self._set_window_snapped_visual(win, True, suppress_shadow=True)
                 self._set_snapped_visual(key, True, force=True)
-                win.setGeometry(QRect(snap_rect))
             except Exception:
                 pass
             self._snapped_normal_geometries[key] = QRect(normal)
-            self._snapped_rects_by_key[key] = QRect(snap_rect)
+            self._snapped_rects_by_key[key] = QRect(win.geometry())
             self._settings.set_value_py(f"windows/{key}/visibility", f"snapped-{snap_type}")
-            QTimer.singleShot(0, lambda key=key: self._set_snapped_visual(key, True, force=True))
-            QTimer.singleShot(0, lambda win=win, rect=QRect(snap_rect): self._apply_snapped_geometry(win, rect))
-            QTimer.singleShot(40, lambda win=win, rect=QRect(snap_rect): self._apply_snapped_geometry(win, rect))
-            QTimer.singleShot(120, lambda win=win, rect=QRect(snap_rect): self._apply_snapped_geometry(win, rect))
-            QTimer.singleShot(240, lambda win=win, rect=QRect(snap_rect): self._apply_snapped_geometry(win, rect))
             QTimer.singleShot(80, lambda win=win, key=key: self._remember_actual_snapped_rect(win, key))
-            QTimer.singleShot(100, lambda win=win: self._apply_native_frame(win))
             finish_native_manual_restore_visual()
             return True
 
@@ -1823,15 +1861,13 @@ class WindowController(QObject):
         key = self._key(win)
         kind = self._snap_geometry_kind(win)
         if kind == "vertical":
-            normal = QRect(start_geometry) if start_geometry is not None and start_geometry.isValid() else self._normal_geometries.get(key, QRect(win.geometry()))
-            if normal.width() >= 320 and normal.height() >= 240:
-                self._snapped_normal_geometries[key] = QRect(normal)
-                self._normal_geometries[key] = QRect(normal)
-                self._settings.set_value_py(f"windows/{key}/normalGeometry", {"x": normal.x(), "y": normal.y(), "w": normal.width(), "h": normal.height()})
-            self._snapped_rects_by_key[key] = QRect(win.geometry())
-            self._settings.set_value_py(f"windows/{key}/visibility", "snapped-vertical")
-            self._set_window_snapped_visual(win, True, suppress_shadow=True)
-            self._set_snapped_visual(key, True, force=True)
+            self._clear_snapped_state(key)
+            geom = QRect(win.geometry())
+            self._normal_geometries[key] = QRect(geom)
+            self._remember_frame_geometry(key, win, geom)
+            self._settings.set_value_py(f"windows/{key}/normalGeometry", {"x": geom.x(), "y": geom.y(), "w": geom.width(), "h": geom.height()})
+            self._settings.set_value_py(f"windows/{key}/visibility", "normal")
+            self._set_window_snapped_visual(win, False, suppress_shadow=False)
             return
         if kind in {"left", "right"}:
             self._snapped_rects_by_key[key] = QRect(win.geometry())
@@ -2177,6 +2213,12 @@ class WindowController(QObject):
         if not self._is_valid_window(win) or not use_custom_window_shadow():
             return 0
         try:
+            if bool(win.property("nativeExternalShadow")):
+                self._last_shadow_insets_by_key[self._key(win)] = 0
+                return 0
+        except Exception:
+            pass
+        try:
             inset = max(0, min(96, int(win.property("normalShadowVisualInset") or 0)))
             if inset > 0:
                 return inset
@@ -2192,6 +2234,8 @@ class WindowController(QObject):
         return
 
     def _snap_target_for_cursor(self, win: QWindow, cursor_x: int, cursor_y: int) -> tuple[QRect, str] | None:
+        if sys.platform == "win32":
+            return None
         screen = win.screen() or QGuiApplication.screenAt(QCursor.pos()) or QGuiApplication.primaryScreen()
         if screen is None:
             return None
@@ -2309,8 +2353,7 @@ class WindowController(QObject):
             key = self._key(win)
             self._set_window_snapped_visual(win, True, suppress_shadow=True)
             self._set_snapped_visual(key, True, force=True)
-            win.setGeometry(QRect(rect))
-            self._snapped_rects_by_key[key] = QRect(rect)
+            self._snapped_rects_by_key[key] = QRect(win.geometry())
         except Exception:
             pass
 
@@ -2338,7 +2381,7 @@ class WindowController(QObject):
 
     def _actual_geometry_looks_snapped(self, win: QWindow) -> bool:
         try:
-            return self._snap_geometry_kind(win) in {"left", "right", "vertical"}
+            return self._snap_geometry_kind(win) in {"left", "right"}
         except Exception:
             return False
 
@@ -2552,6 +2595,9 @@ class WindowController(QObject):
         if not self._is_valid_window(win):
             return (0, 0, 0, 0)
         try:
+            if bool(win.property("nativeExternalShadow")):
+                self._last_shadow_insets_by_key[self._key(win)] = 0
+                return (0, 0, 0, 0)
             if self._is_maximized_or_fullscreen(win):
                 return (0, 0, 0, 0)
             fallback = max(0, min(96, int(win.property("nativeShadowInset") or 0)))

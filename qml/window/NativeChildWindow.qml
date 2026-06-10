@@ -10,7 +10,7 @@ AppWindow {
     showNavToggle: false
     showColorButton: false
     showThemeButton: false
-    showPinButton: false
+    showPinButton: childTopmostEnabled
     title: pageTitle
     width: 760
     height: 520
@@ -20,13 +20,28 @@ AppWindow {
     property var parentWindow: null
     property string pageSource: ""
     property string pageTitle: "子窗口"
+    property bool childTopmostEnabled: false
+    property bool contentReleased: false
 
     modality: Qt.NonModal
 
     Loader {
+        id: pageLoader
         anchors.fill: parent
-        asynchronous: true
-        source: child.pageSource
+        asynchronous: false
+        active: !child.contentReleased
+        source: child.contentReleased ? "" : child.pageSource
+    }
+
+    function prepareContent(sourceUrl) {
+        alwaysOnTop = false
+        pageSource = sourceUrl
+        contentReleased = false
+    }
+
+    function releaseContent() {
+        contentReleased = true
+        pageSource = ""
     }
 
     function applyParentWindow() {
@@ -36,6 +51,33 @@ AppWindow {
         }
     }
 
+    function refreshChildTopmostEnabled() {
+        const enabled = (typeof App !== "undefined" && App && App.settings)
+                        ? App.settings.valueOr("performance/childWindowTopmostEnabled", false)
+                        : false
+        if (childTopmostEnabled === enabled)
+            return
+        if (!enabled && childTopmostEnabled && titleBar && titleBar.pinButtonItem)
+            unregisterNativeClickableItem(titleBar.pinButtonItem)
+        childTopmostEnabled = enabled
+        if (!enabled && alwaysOnTop) {
+            alwaysOnTop = false
+            if (bridge && bridge.window)
+                bridge.window.setAlwaysOnTop(child, false)
+        }
+    }
+
     onParentWindowChanged: applyParentWindow()
-    Component.onCompleted: applyParentWindow()
+    Component.onCompleted: {
+        refreshChildTopmostEnabled()
+        applyParentWindow()
+    }
+
+    Connections {
+        target: (typeof App !== "undefined" && App && App.settings) ? App.settings : null
+        function onChanged(key, value) {
+            if (key === "performance/childWindowTopmostEnabled")
+                child.refreshChildTopmostEnabled()
+        }
+    }
 }

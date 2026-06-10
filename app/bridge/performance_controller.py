@@ -8,6 +8,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Property, Signal, Slot
 
+from .memory_tools import trim_process_memory
 from .settings_store import SettingsStore
 from .util import app_data_dir
 
@@ -94,7 +95,7 @@ class PerformanceController(QObject):
 
     @Slot()
     def collectGarbage(self) -> None:
-        gc.collect()
+        trim_process_memory()
 
     @Slot(result=int)
     def totalMemoryMb(self) -> int:

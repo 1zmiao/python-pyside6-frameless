@@ -19,11 +19,11 @@ Item {
     Rectangle {
         anchors.fill: parent
         radius: Core.Theme.radius.button
-        border.color: Core.Theme.color.outlineAccent
+        border.color: Core.Theme.mode === "dark" ? Core.Theme.alpha(Qt.lighter(Core.Theme.primary, 1.95), 0.95) : Core.Theme.color.outlineAccent
         border.width: 1
         color: Core.Theme.mode === "dark" ? Core.Theme.color.cardAlt : Core.Theme.color.card
-        Behavior on color { ColorAnimation { duration: 120 } }
-        Behavior on border.color { ColorAnimation { duration: 120 } }
+        Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+        Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
     }
 
     Text {

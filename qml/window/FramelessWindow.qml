@@ -12,12 +12,18 @@ Window {
     readonly property real stableHairline: Math.max(1.0, physicalPixel)
 
     property var bridge
+    property bool customChromeEnabled: root.bridge && root.bridge.window
+                                       && root.bridge.window.customChromeEnabled !== undefined
+                                       ? root.bridge.window.customChromeEnabled
+                                       : true
     property bool useCustomShadow: root.bridge && root.bridge.window
                                    && root.bridge.window.customShadowEnabled !== undefined
                                    ? root.bridge.window.customShadowEnabled
-                                   : Qt.platform.os !== "windows"
+                                   : root.customChromeEnabled
 
-    flags: Qt.Window | Qt.FramelessWindowHint | (root.useCustomShadow ? Qt.NoDropShadowWindowHint : 0)
+    flags: Qt.Window
+           | (root.customChromeEnabled ? Qt.FramelessWindowHint : 0)
+           | (root.useCustomShadow ? Qt.NoDropShadowWindowHint : 0)
     color: "transparent"
     visible: true
 
@@ -35,12 +41,15 @@ Window {
     property bool lowMemoryVisuals: root.windowKey !== "main"
     property int normalCornerRadius: Core.Theme.radius.window
     property int cornerRadius: (visibility === Window.Maximized || visibility === Window.FullScreen) ? 0 : normalCornerRadius
-    property bool resizeEnabled: visibility !== Window.Maximized && visibility !== Window.FullScreen
+    property bool resizeEnabled: root.customChromeEnabled && visibility !== Window.Maximized && visibility !== Window.FullScreen
     property bool _localThemeAnimation: false
     property bool _snappedVisualSyncPending: false
     property bool nativeInteractionActive: false
     property bool nativeCaptionMovePending: false
     property bool nativeDragRestoreVisual: false
+    property string pendingTransitionMode: ""
+    property real pendingTransitionX: 0
+    property real pendingTransitionY: 0
     property bool snappedVisual: false
     property string snappedVisualKind: ""
     property bool snapShadowSuppressed: false
@@ -59,9 +68,9 @@ Window {
     property real inlineShadowTargetOpacity: Core.Theme.mode === "dark" ? 1.0 : 0.78
     property real inlineShadowOpacity: inlineShadowVisible ? inlineShadowTargetOpacity : 0
     property bool normalVisualMarginsActive: inlineShadowVisible || (root.useCustomShadow && nativeDragRestoreVisual)
-    property int frameMarginLeft: normalVisualMarginsActive || snappedVisualKind === "vertical" ? normalShadowVisualInset : 0
+    property int frameMarginLeft: normalVisualMarginsActive ? normalShadowVisualInset : 0
     property int frameMarginTop: normalVisualMarginsActive ? normalShadowVisualInset : 0
-    property int frameMarginRight: normalVisualMarginsActive || snappedVisualKind === "vertical" ? normalShadowVisualInset : 0
+    property int frameMarginRight: normalVisualMarginsActive ? normalShadowVisualInset : 0
     property int frameMarginBottom: normalVisualMarginsActive ? normalShadowVisualInset : 0
     property int nativeShadowInsetLeft: frameMarginLeft
     property int nativeShadowInsetTop: frameMarginTop
@@ -120,10 +129,22 @@ Window {
         root._localThemeAnimation = true
         if (root.bridge.theme.setRippleOrigin)
             root.bridge.theme.setRippleOrigin(cx, cy)
-        if (!root.lowMemoryVisuals && transitionLayer.item)
-            transitionLayer.item.play(cx, cy, nextMode)
+        root.playTransition(cx, cy, nextMode)
         root.bridge.theme.setMode(nextMode)
         root.requestThemeToggle(Qt.point(cx, cy), nextMode)
+    }
+
+    function playTransition(cx, cy, mode) {
+        if (root.lowMemoryVisuals)
+            return
+        pendingTransitionX = cx
+        pendingTransitionY = cy
+        pendingTransitionMode = mode
+        if (transitionLayer.item) {
+            transitionLayer.item.play(pendingTransitionX, pendingTransitionY, pendingTransitionMode)
+        } else {
+            transitionLayer.active = true
+        }
     }
 
     function adjustFontScaleByWheel(deltaY) {
@@ -254,17 +275,26 @@ Window {
             color: Core.Theme.color.surface
             border.color: Core.Theme.color.outline
             border.width: (root.cornerRadius === 0 || root.snappedVisual) ? 0 : root.stableHairline
-            Behavior on color { ColorAnimation { duration: 150; easing.type: Easing.OutCubic } }
+            Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
             Behavior on radius { NumberAnimation { duration: 80; easing.type: Easing.OutCubic } }
         }
 
         Loader {
             id: transitionLayer
             anchors.fill: parent
-            active: !root.lowMemoryVisuals
+            active: false
             z: 1
             sourceComponent: ThemeTransitionLayer {
                 radius: root.cornerRadius
+                onFinished: {
+                    transitionLayer.active = false
+                    if (root.windowKey === "main" && root.bridge && root.bridge.trimMemory)
+                        Qt.callLater(root.bridge.trimMemory)
+                }
+            }
+            onLoaded: {
+                if (item && root.pendingTransitionMode.length > 0)
+                    item.play(root.pendingTransitionX, root.pendingTransitionY, root.pendingTransitionMode)
             }
         }
 
@@ -284,8 +314,11 @@ Window {
                 alwaysOnTop: root.alwaysOnTop
                 showNavToggle: root.showNavToggle
                 showColorButton: root.showColorButton
+                showThemeButton: root.showThemeButton
+                showPinButton: root.showPinButton
+                showWindowControls: root.customChromeEnabled
                 windowMaximized: root.bridge && root.bridge.window ? root.bridge.window.isMaximizedState(root) : root.visibility === Window.Maximized
-                useNativeCaption: Qt.platform.os === "windows" && root.bridge && root.bridge.window && root.bridge.window.nativeResize
+                useNativeCaption: root.customChromeEnabled && Qt.platform.os === "windows" && root.bridge && root.bridge.window && root.bridge.window.nativeResize
 
                 onActivateRequested: {
                     root.raiseSelf()
@@ -340,9 +373,11 @@ Window {
         Rectangle {
             id: windowEdgeOverlay
             anchors.fill: parent
+            anchors.margins: root.stableHairline
             z: 90
-            radius: root.cornerRadius
+            radius: Math.max(0, root.cornerRadius - root.stableHairline)
             color: "transparent"
+            visible: root.cornerRadius > 0
             border.color: root.cornerRadius > 0 ? Core.Theme.color.windowEdge : "transparent"
             border.width: root.cornerRadius > 0 ? root.stableHairline : 0
             antialiasing: true
@@ -388,6 +423,15 @@ Window {
         repeat: false
         onTriggered: if (bridge) bridge.window.refreshNativeFrame(root)
     }
+    Timer {
+        id: resizeTrimTimer
+        interval: 1000
+        repeat: false
+        onTriggered: {
+            if (root.windowKey === "main" && root.bridge && root.bridge.trimMemory)
+                root.bridge.trimMemory()
+        }
+    }
 
     Connections {
         target: root.bridge ? root.bridge.window : null
@@ -422,10 +466,7 @@ Window {
         function onSnapPreviewChanged(key, x, y, w, h, visible) {
             if (key !== root.windowKey)
                 return
-            if (visible)
-                snapPreview.showAt(Qt.rect(x, y, w, h))
-            else
-                snapPreview.hidePreview()
+            snapPreview.hidePreview()
         }
         function onSnappedVisualChanged(key, snapped) {
             if (key === root.windowKey) {
@@ -449,8 +490,7 @@ Window {
                 root._localThemeAnimation = false
                 return
             }
-            if (!root.lowMemoryVisuals && transitionLayer.item)
-                transitionLayer.item.play(frameRoot.width / 2, frameRoot.height / 2, mode)
+            root.playTransition(frameRoot.width / 2, frameRoot.height / 2, mode)
         }
         function onPrimaryColorChanged(color) {
             // Pure QML color updates. Avoid native frame refresh while dragging the color wheel.
@@ -469,10 +509,14 @@ Window {
     onYChanged: requestSnappedVisualSync()
     onWidthChanged: {
         windowEvent("widthChanged", ({ "width": width }))
+        if (root.windowKey === "main")
+            resizeTrimTimer.restart()
         requestSnappedVisualSync()
     }
     onHeightChanged: {
         windowEvent("heightChanged", ({ "height": height }))
+        if (root.windowKey === "main")
+            resizeTrimTimer.restart()
         requestSnappedVisualSync()
     }
     onVisibilityChanged: {
@@ -495,8 +539,7 @@ Window {
             return
         }
         if (root.windowKey === "main" && bridge && bridge.dialogs)
-            bridge.dialogs.closeAll()
+            bridge.dialogs.shutdown()
         windowEvent("closing", ({}))
     }
 }
-

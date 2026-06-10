@@ -125,6 +125,10 @@ Popup {
 
     onAboutToShow: centerInHost()
     onOpened: centerInHost()
+    onClosed: {
+        if (typeof App !== "undefined" && App && App.trimMemory)
+            Qt.callLater(App.trimMemory)
+    }
     onWidthChanged: if (visible) centerInHost()
     onHeightChanged: if (visible) centerInHost()
 
@@ -156,8 +160,8 @@ Popup {
             color: Core.Theme.color.card
             border.color: Core.Theme.color.outlineAccent
             border.width: 1
-            Behavior on color { ColorAnimation { duration: 120 } }
-            Behavior on border.color { ColorAnimation { duration: 120 } }
+            Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+            Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
         }
     }
 

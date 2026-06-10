@@ -9,8 +9,8 @@ Item {
     property bool appReady: typeof App !== "undefined" && App !== null
     function settingValue(key, fallback) { return appReady && App.settings ? App.settings.valueOr(key, fallback) : fallback }
     function settingsPath() { return appReady && App.settings ? App.settings.path() : "" }
-    function trayIconPath() { return appReady && App.tray ? App.tray.iconPath : "resources/tray_icon.png" }
-    function trayDefaultIconPath() { return appReady && App.tray ? App.tray.defaultIconPath() : "resources/tray_icon.png" }
+    function trayIconPath() { return appReady && App.tray ? App.tray.iconPath : "resources/app_icon.ico" }
+    function trayDefaultIconPath() { return appReady && App.tray ? App.tray.defaultIconPath() : "resources/app_icon.ico" }
     function performanceProfile() { return appReady && App.performance ? App.performance.resourceProfile : "auto" }
     function effectiveProfile() { return appReady && App.performance ? App.performance.effectiveProfile : "normal" }
     function profileIndex(profile) {
@@ -47,8 +47,9 @@ Item {
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
             border.color: Core.Theme.color.cardOutline
+            Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+            Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
             antialiasing: true
-            Behavior on color { ColorAnimation { duration: 150 } }
 
             BackgroundRipple { radius: parent.radius }
             CardAccentGlow { radius: parent.radius }
@@ -61,7 +62,7 @@ Item {
                 spacing: Core.Theme.dp(12)
 
                 Text { text: "设置"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.fontSize.title; font.family: Core.Theme.headingFontFamily; font.weight: Core.Theme.headingFontWeight; font.letterSpacing: Core.Theme.headingLetterSpacing }
-                Text { width: parent.width; text: "这些设置会保存在软件根目录下的本地 JSON 配置文件中。"; color: Core.Theme.color.mutedText; font.pixelSize: Core.Theme.fontSize.body; wrapMode: Text.WordWrap }
+                Text { width: parent.width; text: "这些设置会保存在软件根目录下的本地 JSON 配置文件中。"; color: Core.Theme.color.mutedText; font.pixelSize: Core.Theme.fontSize.body; wrapMode: Text.WordWrap; lineHeight: Core.Theme.bodyLineHeight }
                 Text { width: parent.width; text: root.settingsPath(); color: Core.Theme.color.mutedText; font.pixelSize: Core.Theme.fontSize.caption; elide: Text.ElideRight }
 
                 AppCheckBox { text: "启用功能 A"; storageKey: "settings/featureA"; checked: true; autoLoad: true }
@@ -90,11 +91,11 @@ Item {
                 Column {
                     width: parent.width
                     spacing: Core.Theme.dp(6)
-                    Row {
+                    Flow {
                         width: parent.width
                         spacing: Core.Theme.dp(8)
-                        Text { text: "界面字体大小（Ctrl+滚轮）"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.fontSize.body; width: Core.Theme.dp(168); anchors.verticalCenter: parent.verticalCenter }
-                        Text { text: Math.round(13 * Core.Theme.fontScale) + " px / " + Math.round(Core.Theme.fontScale * 100) + "%"; color: Core.Theme.color.mutedText; font.pixelSize: Core.Theme.fontSize.control; width: Core.Theme.dp(94); anchors.verticalCenter: parent.verticalCenter }
+                        Text { text: "界面字体大小（Ctrl+滚轮）"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.fontSize.body; width: Core.Theme.dp(168); height: Core.Theme.metrics.controlHeight; verticalAlignment: Text.AlignVCenter }
+                        Text { text: Math.round(13 * Core.Theme.fontScale) + " px / " + Math.round(Core.Theme.fontScale * 100) + "%"; color: Core.Theme.color.mutedText; font.pixelSize: Core.Theme.fontSize.control; width: Core.Theme.dp(94); height: Core.Theme.metrics.controlHeight; verticalAlignment: Text.AlignVCenter }
                         AppButton { text: "重置"; variant: "soft"; minWidth: Core.Theme.dp(56); horizontalPadding: Core.Theme.dp(12); onClicked: if (root.appReady && App.theme) App.theme.resetFontScale() }
                     }
                     Slider {
@@ -114,8 +115,22 @@ Item {
                             implicitHeight: Core.Theme.dp(18)
                             width: fontSlider.availableWidth
                             height: implicitHeight
-                            Rectangle { anchors.verticalCenter: parent.verticalCenter; width: parent.width; height: Core.Theme.dp(4); radius: 2; color: Core.Theme.primarySoft }
-                            Rectangle { anchors.verticalCenter: parent.verticalCenter; width: fontSlider.visualPosition * parent.width; height: Core.Theme.dp(4); radius: 2; color: Core.Theme.primary }
+                            Rectangle {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: parent.width
+                                height: Core.Theme.dp(4)
+                                radius: 2
+                                color: Core.Theme.primarySoft
+                                Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+                            }
+                            Rectangle {
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: fontSlider.visualPosition * parent.width
+                                height: Core.Theme.dp(4)
+                                radius: 2
+                                color: Core.Theme.primary
+                                Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+                            }
                             Repeater {
                                 model: 10
                                 delegate: Rectangle {
@@ -126,6 +141,7 @@ Item {
                                     opacity: 0.75
                                     x: index * (parent.width - width) / 9
                                     anchors.verticalCenter: parent.verticalCenter
+                                    Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
                                 }
                             }
                         }
@@ -138,6 +154,8 @@ Item {
                             color: Core.Theme.primary
                             border.color: Core.Theme.color.card
                             border.width: 2
+                            Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+                            Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
                         }
                     }
                     Connections { target: root.appReady && App.theme ? App.theme : null; function onFontScaleChanged(scale) { fontSlider.value = Math.round(scale * 100 / fontSlider.stepSize) * fontSlider.stepSize } }
@@ -153,13 +171,14 @@ Item {
                     spacing: Core.Theme.dp(6)
                     Text { width: parent.width; text: "托盘图标文件：" + root.trayIconPath(); color: Core.Theme.color.mutedText; font.pixelSize: Core.Theme.fontSize.caption; elide: Text.ElideRight }
                     Text { width: parent.width; text: "默认图标位置：" + root.trayDefaultIconPath(); color: Core.Theme.color.mutedText; font.pixelSize: Core.Theme.fontSize.caption; elide: Text.ElideRight }
-                    Text { width: parent.width; text: "可以直接替换默认 PNG，也可以在下面输入 PNG/ICO 的绝对路径并保存。"; color: Core.Theme.color.mutedText; font.pixelSize: Core.Theme.fontSize.caption; wrapMode: Text.WordWrap }
+                    Text { width: parent.width; text: "可以直接替换默认 PNG，也可以在下面输入 PNG/ICO 的绝对路径并保存。"; color: Core.Theme.color.mutedText; font.pixelSize: Core.Theme.fontSize.caption; wrapMode: Text.WordWrap; lineHeight: Core.Theme.bodyLineHeight }
                 }
 
                 AppTextField { id: trayIconPathInput; width: parent.width; placeholderText: "自定义托盘图标路径，可留空"; storageKey: "tray/iconPath"; autoLoad: true; onSaved: if (root.appReady && App.tray) App.tray.setIconPath(text) }
                 AppTextField { id: projectPathInput; width: parent.width; placeholderText: "默认项目路径"; storageKey: "paths/defaultProject"; autoLoad: true }
 
-                Row {
+                Flow {
+                    width: parent.width
                     spacing: Core.Theme.dp(8)
                     AppButton {
                         variant: "primary"
@@ -182,6 +201,8 @@ Item {
                             const host = root.Window.window
                             if (host && host.changeThemeWithRipple)
                                 host.changeThemeWithRipple(next, host.width / 2, host.height / 2)
+                            else if (typeof NativeHost !== "undefined" && NativeHost && NativeHost.changeThemeWithRipple)
+                                NativeHost.changeThemeWithRipple(next, root.width / 2, root.height / 2)
                             else
                                 App.theme.setMode(next)
                         }
@@ -192,12 +213,63 @@ Item {
 
         Rectangle {
             width: parent.width
+            height: memoryColumn.implicitHeight + Core.Theme.dp(36)
+            radius: Core.Theme.radius.card
+            color: Core.Theme.color.card
+            border.color: Core.Theme.color.cardOutline
+            Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+            Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+            antialiasing: true
+
+            BackgroundRipple { radius: parent.radius }
+            CardAccentGlow { radius: parent.radius }
+
+            Column {
+                id: memoryColumn
+                z: 1
+                anchors.fill: parent
+                anchors.margins: Core.Theme.dp(18)
+                spacing: Core.Theme.dp(12)
+
+                Text {
+                    text: "内存优化管理"
+                    color: Core.Theme.color.text
+                    font.pixelSize: Core.Theme.fontSize.subtitle
+                    font.family: Core.Theme.headingFontFamily
+                    font.weight: Core.Theme.headingFontWeight
+                    font.letterSpacing: Core.Theme.headingLetterSpacing
+                }
+
+                Text {
+                    width: parent.width
+                    text: "进一步的内存优化需开启开发者选项强制设置。默认密码：code"
+                    color: Core.Theme.color.mutedText
+                    font.pixelSize: Core.Theme.fontSize.caption
+                    font.family: Core.Theme.appFontFamily
+                    wrapMode: Text.WordWrap
+                    lineHeight: Core.Theme.bodyLineHeight
+                }
+
+                AppCheckBox {
+                    width: parent.width
+                    wrapText: true
+                    text: "独立子窗口启用置顶按钮（每个独立子窗口会额外增加约 3MB 内存占用量）"
+                    storageKey: "performance/childWindowTopmostEnabled"
+                    checked: false
+                    autoLoad: true
+                }
+            }
+        }
+
+        Rectangle {
+            width: parent.width
             height: developerColumn.implicitHeight + Core.Theme.dp(36)
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
             border.color: Core.Theme.color.cardOutline
+            Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+            Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
             antialiasing: true
-            Behavior on color { ColorAnimation { duration: 150 } }
 
             BackgroundRipple { radius: parent.radius }
             CardAccentGlow { radius: parent.radius }
@@ -218,7 +290,7 @@ Item {
                     color: Core.Theme.color.mutedText
                     font.pixelSize: Core.Theme.fontSize.caption
                     font.family: Core.Theme.appFontFamily
-                    wrapMode: Text.WordWrap
+                    wrapMode: Text.WrapAnywhere
                 }
                 Text {
                     width: parent.width
@@ -228,19 +300,18 @@ Item {
                     font.pixelSize: Core.Theme.fontSize.caption
                     font.family: Core.Theme.appFontFamily
                     wrapMode: Text.WordWrap
+                    lineHeight: Core.Theme.bodyLineHeight
                 }
 
-                Row {
+                Flow {
                     width: parent.width
-                    height: Core.Theme.metrics.fieldHeight
                     spacing: Core.Theme.dp(8)
                     visible: !(root.appReady && App.performance && App.performance.developerUnlocked)
-                    AppTextField { id: developerPasswordInput; width: Math.min(Core.Theme.dp(260), parent.width - unlockButton.width - Core.Theme.dp(8)); height: parent.height; placeholderText: "维护口令"; encrypted: true; revealed: false; autoSave: false }
+                    AppTextField { id: developerPasswordInput; width: Math.min(Core.Theme.dp(260), Math.max(Core.Theme.dp(150), parent.width - unlockButton.width - Core.Theme.dp(8))); placeholderText: "维护口令"; encrypted: true; revealed: false; autoSave: false }
                     AppButton {
                         id: unlockButton
-                        anchors.verticalCenter: parent.verticalCenter
-                        height: parent.height
                         variant: "soft"
+                        height: developerPasswordInput.height
                         text: "开启"
                         minButtonWidth: Core.Theme.dp(82)
                         onClicked: {
@@ -259,14 +330,14 @@ Item {
                     spacing: Core.Theme.dp(8)
                     visible: root.appReady && App.performance && App.performance.developerUnlocked
 
-                    Row {
+                    Flow {
                         width: parent.width
                         spacing: Core.Theme.dp(10)
-                        Text { text: "资源档位"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.fontSize.body; width: Core.Theme.dp(86); anchors.verticalCenter: parent.verticalCenter }
+                        Text { text: "资源档位"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.fontSize.body; width: Core.Theme.dp(86); height: Core.Theme.metrics.controlHeight; verticalAlignment: Text.AlignVCenter }
                         ComboBox {
                             id: profileCombo
                             property int rowHeight: Core.Theme.dp(34)
-                            width: Math.min(Core.Theme.dp(230), parent.width - Core.Theme.dp(96))
+                            width: Math.min(Core.Theme.dp(230), Math.max(Core.Theme.dp(150), parent.width - Core.Theme.dp(96)))
                             height: Core.Theme.metrics.controlHeight
                             model: ["自动", "普通模式", "低内存模拟"]
                             currentIndex: root.profileIndex(root.performanceProfile())
@@ -283,6 +354,7 @@ Item {
                                 font.family: Core.Theme.appFontFamily
                                 verticalAlignment: Text.AlignVCenter
                                 elide: Text.ElideRight
+                                Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
                             }
                             indicator: Text {
                                 text: "▼"
@@ -292,12 +364,15 @@ Item {
                                 anchors.right: parent.right
                                 anchors.rightMargin: Core.Theme.dp(10)
                                 anchors.verticalCenter: parent.verticalCenter
+                                Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
                             }
                             background: Rectangle {
                                 radius: Core.Theme.radius.button
                                 color: profileCombo.pressed ? Core.Theme.color.controlPressed : (profileCombo.hovered ? Core.Theme.color.controlHover : Core.Theme.color.field)
                                 border.color: profileCombo.activeFocus ? Core.Theme.color.fieldFocusBorder : Core.Theme.color.outline
                                 border.width: 1
+                                Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+                                Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
                             }
                             delegate: ItemDelegate {
                                 width: profileCombo.width
@@ -311,10 +386,12 @@ Item {
                                     verticalAlignment: Text.AlignVCenter
                                     leftPadding: Core.Theme.dp(10)
                                     elide: Text.ElideRight
+                                    Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
                                 }
                                 background: Rectangle {
                                     radius: Core.Theme.radius.button
-                                    color: highlighted ? Core.Theme.color.navActive : (hovered ? Core.Theme.color.controlHover : "transparent")
+                                    color: highlighted ? Core.Theme.color.navActive : (hovered ? Core.Theme.color.controlHover : Core.Theme.alpha(Core.Theme.color.controlHover, 0))
+                                    Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
                                 }
                             }
                             popup: Popup {
@@ -327,6 +404,8 @@ Item {
                                     color: Core.Theme.color.card
                                     border.color: Core.Theme.color.outlineAccent
                                     border.width: 1
+                                    Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+                                    Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
                                 }
                                 contentItem: ListView {
                                     clip: true
@@ -340,19 +419,21 @@ Item {
 
                     Text {
                         width: parent.width
-                        text: "当前生效：" + (root.effectiveProfile() === "low-memory" ? "低内存" : "普通") + "。自动模式只在 4GB 及以下内存设备上进入低内存策略；这台电脑可用“低内存模拟”强制测试。"
+                        text: "当前生效：" + (root.effectiveProfile() === "low-memory" ? "低内存" : "普通") + "。自动模式只在 4GB 及以下内存设备上进入低内存策略。"
                         color: Core.Theme.color.mutedText
                         font.pixelSize: Core.Theme.fontSize.caption
                         font.family: Core.Theme.appFontFamily
                         wrapMode: Text.WordWrap
+                        lineHeight: Core.Theme.bodyLineHeight
                     }
                     Text {
                         width: parent.width
-                        text: "切换后会立即影响关闭后的子窗口释放和后续轻量策略；已打开窗口不会热重建窗口壳、hit-test 或阴影 helper。重新打开子窗口后完整生效。"
+                        text: "切换后需重开子窗口才会完整生效。"
                         color: Core.Theme.color.mutedText
                         font.pixelSize: Core.Theme.fontSize.caption
                         font.family: Core.Theme.appFontFamily
                         wrapMode: Text.WordWrap
+                        lineHeight: Core.Theme.bodyLineHeight
                     }
 
                     Connections {

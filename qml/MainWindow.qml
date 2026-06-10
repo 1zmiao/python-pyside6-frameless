@@ -8,8 +8,8 @@ FramelessWindow {
     windowKey: "main"
     bridge: App
     title: Core.AppInfo.windowTitle
-    width: 1080
-    height: 700
+    width: 936
+    height: 749
     minimumWidth: 640
     minimumHeight: 420
 

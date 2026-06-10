@@ -33,7 +33,15 @@ Item {
         _openAt(px, py)
     }
 
-    function close() { visible = false }
+    function close() {
+        if (!visible)
+            return
+        visible = false
+        textTarget = null
+        actions = []
+        if (typeof App !== "undefined" && App && App.trimMemory)
+            Qt.callLater(App.trimMemory)
+    }
 
     function _openAt(px, py) {
         const menuHeight = Math.max(Core.Theme.dp(80), menuRect.implicitHeight)
@@ -81,6 +89,8 @@ Item {
         color: Core.Theme.color.card
         border.width: 1
         border.color: Core.Theme.mode === "dark" ? Core.Theme.alpha(Qt.lighter(Core.Theme.primary, 1.65), 0.88) : Core.Theme.color.outlineAccent
+        Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+        Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
 
         Column {
             id: menuColumn

@@ -24,6 +24,8 @@ Popup {
             root._closedActionName = root.actionName
         }
         root._suppressCloseStamp = false
+        if (typeof App !== "undefined" && App && App.trimMemory)
+            Qt.callLater(App.trimMemory)
     }
 
     function isAboutMenu() { return actionName === "about" }
@@ -104,7 +106,7 @@ Popup {
         Rectangle {
             anchors.fill: parent
             radius: Core.Theme.radius.button
-            color: mouse.pressed ? Core.Theme.color.controlPressed : (row.hovered ? Core.Theme.color.controlHover : "transparent")
+            color: mouse.pressed ? Core.Theme.color.controlPressed : (row.hovered ? Core.Theme.color.controlHover : Core.Theme.alpha(Core.Theme.color.controlHover, 0))
         }
 
         Rectangle {
