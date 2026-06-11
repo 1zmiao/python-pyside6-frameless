@@ -286,6 +286,7 @@ Window {
             z: 1
             sourceComponent: ThemeTransitionLayer {
                 radius: root.cornerRadius
+                renderScale: Core.Theme.lowMemoryMode ? 0.15 : 0.35
                 onFinished: {
                     transitionLayer.active = false
                     if (root.windowKey === "main" && root.bridge && root.bridge.trimMemory)
@@ -428,7 +429,9 @@ Window {
         interval: 1000
         repeat: false
         onTriggered: {
-            if (root.windowKey === "main" && root.bridge && root.bridge.trimMemory)
+            if (root.windowKey === "main" && root.bridge && root.bridge.trimResizeMemory)
+                root.bridge.trimResizeMemory()
+            else if (root.windowKey === "main" && root.bridge && root.bridge.trimMemory)
                 root.bridge.trimMemory()
         }
     }

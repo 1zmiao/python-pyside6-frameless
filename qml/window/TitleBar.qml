@@ -83,6 +83,46 @@ Item {
             paletteContextMenuLoader.item.close()
     }
 
+    function smokeOpenFirstMenu() {
+        if (!leftMenusArea || leftMenusArea.children.length <= 0 || root.leftMenus.length <= 0)
+            return false
+        const menuButton = leftMenusArea.children[0]
+        if (!menuButton)
+            return false
+        if (colorPopupLoader.item)
+            colorPopupLoader.item.close()
+        menuPopupLoader.active = true
+        Qt.callLater(function() {
+            if (menuPopupLoader.item)
+                menuPopupLoader.item.openFor(root.leftMenus[0].action, menuButton)
+            if (typeof App !== "undefined" && App && App.logMemorySample)
+                App.logMemorySample("title_menu_opened")
+        })
+        return true
+    }
+
+    function smokeOpenPalette() {
+        const paletteButton = paletteButtonLoader.item
+        if (!paletteButton)
+            return false
+        if (menuPopupLoader.item)
+            menuPopupLoader.item.close()
+        colorPopupLoader.active = true
+        Qt.callLater(function() {
+            if (colorPopupLoader.item)
+                colorPopupLoader.item.openNear(paletteButton)
+            if (typeof App !== "undefined" && App && App.logMemorySample)
+                App.logMemorySample("palette_opened")
+        })
+        return true
+    }
+
+    function smokePopupState() {
+        return "menu=" + (!!(menuPopupLoader.item && menuPopupLoader.item.visible))
+               + ",palette=" + (!!(colorPopupLoader.item && colorPopupLoader.item.visible))
+               + ",context=" + (!!(paletteContextMenuLoader.item && paletteContextMenuLoader.item.visible))
+    }
+
     function dragPress(item, mx, my) {
         closeMenus()
         root.activateRequested()
@@ -136,7 +176,7 @@ Item {
         startY: parent.height * 0.08
         delayMs: 0
         colorRole: "titleBar"
-        opacityScale: 0.82
+        opacityScale: 1.0
     }
 
     Rectangle {
@@ -228,8 +268,14 @@ Item {
                     onClicked: {
                         if (colorPopupLoader.item)
                             colorPopupLoader.item.close()
-                        if (menuPopupLoader.item)
-                            menuPopupLoader.item.openFor(modelData.action, this)
+                        const menuButton = this
+                        menuPopupLoader.active = true
+                        Qt.callLater(function() {
+                            if (menuPopupLoader.item)
+                                menuPopupLoader.item.openFor(modelData.action, menuButton)
+                            if (typeof App !== "undefined" && App && App.logMemorySample)
+                                App.logMemorySample("title_menu_opened")
+                        })
                     }
                 }
             }
@@ -291,17 +337,25 @@ Item {
                         Qt.callLater(function() {
                             if (colorPopupLoader.item)
                                 colorPopupLoader.item.openNear(paletteButton)
+                            if (typeof App !== "undefined" && App && App.logMemorySample)
+                                App.logMemorySample("palette_opened")
                         })
                     }
                 }
                 onRightClicked: function(localX, localY) {
-                    if (!paletteContextMenuLoader.item)
-                        return
-                    const host = paletteContextMenuLoader.item.parent
-                    const p = paletteButton.mapToItem(host, localX, localY)
-                    paletteContextMenuLoader.item.openForActions([
-                        { "text": "隐藏调色按钮", "action": "hidePalette", "available": true }
-                    ], p.x, p.y)
+                    const paletteButtonItem = paletteButton
+                    const clickX = localX
+                    const clickY = localY
+                    paletteContextMenuLoader.active = true
+                    Qt.callLater(function() {
+                        if (!paletteContextMenuLoader.item)
+                            return
+                        const host = paletteContextMenuLoader.item.parent
+                        const p = paletteButtonItem.mapToItem(host, clickX, clickY)
+                        paletteContextMenuLoader.item.openForActions([
+                            { "text": "隐藏调色按钮", "action": "hidePalette", "available": true }
+                        ], p.x, p.y)
+                    })
                 }
             }
         }
@@ -359,6 +413,7 @@ Item {
                 anchors.centerIn: parent
                 color: Core.Theme.color.hairline
                 opacity: 0.72
+                Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
             }
         }
 
@@ -369,7 +424,7 @@ Item {
 
     Loader {
         id: paletteContextMenuLoader
-        active: root.showColorButton
+        active: false
         sourceComponent: AppContextMenu {
             parent: root.Window.window ? root.Window.window.contentItem : root
             menuWidth: Core.Theme.dp(188)
@@ -383,15 +438,20 @@ Item {
                         App.settings.setValue("ui/showColorButton", false)
                 }
             }
+            onVisibleChanged: {
+                if (!visible)
+                    Qt.callLater(function() { paletteContextMenuLoader.active = false })
+            }
         }
     }
 
     Loader {
         id: menuPopupLoader
-        active: root.leftMenus && root.leftMenus.length > 0
+        active: false
         sourceComponent: AppMenu {
             parent: root.Window.window ? root.Window.window.contentItem : root
             onActionTriggered: function(action, kind) { root.menuActionRequested(action, kind) }
+            onClosed: Qt.callLater(function() { menuPopupLoader.active = false })
         }
     }
 

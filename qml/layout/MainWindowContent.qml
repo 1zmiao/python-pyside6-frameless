@@ -18,12 +18,7 @@ Item {
     }
 
     function childTitleFor(pageKey) {
-        if (pageKey === "settings") return "\u8bbe\u7f6e"
-        if (pageKey === "tools") return "\u5de5\u5177"
-        if (pageKey === "update") return "\u66f4\u65b0"
-        if (pageKey === "about") return "\u5173\u4e8e"
-        if (pageKey === "inline-demo") return "\u9875\u5185\u5b50\u7a97\u53e3"
-        return "\u9996\u9875"
+        return Core.AppInfo.pageTitle(pageKey)
     }
 
     function openChildByPolicy(pageKey, props, mode) {
@@ -53,6 +48,15 @@ Item {
     function closeTrayMenu() {
         if (trayMenuLoader.item)
             trayMenuLoader.item.closeMenu()
+    }
+
+    function smokeShowPage(pageKey) {
+        if (!pageKey || pageKey.length <= 0)
+            return false
+        sideNav.restore()
+        sideNav.currentPage = String(pageKey)
+        pageHost.showPage(String(pageKey))
+        return true
     }
 
     function toggleTrayMenuAt(x, y) {
@@ -149,8 +153,8 @@ Item {
             Qt.callLater(function() {
                 if (inlineWindowManagerLoader.item && inlineWindowManagerLoader.item.windowCount === 0) {
                     inlineWindowManagerLoader.active = false
-                    if (typeof App !== "undefined" && App && App.trimMemory)
-                        App.trimMemory()
+                    if (typeof App !== "undefined" && App && App.trimMemoryAfterInlineWindowsClosed)
+                        Qt.callLater(App.trimMemoryAfterInlineWindowsClosed)
                 }
             })
         }
@@ -158,6 +162,13 @@ Item {
 
     Connections {
         target: Core.InlineWindowBus
+        function onOpenChildRequested(pageKey, mode, props) {
+            root.openChildByPolicy(pageKey, props, mode)
+        }
+    }
+
+    Connections {
+        target: (typeof App !== "undefined" && App) ? App : null
         function onOpenChildRequested(pageKey, mode, props) {
             root.openChildByPolicy(pageKey, props, mode)
         }

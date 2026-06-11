@@ -35,6 +35,8 @@ Popup {
             root._closedAt = Date.now()
         root._suppressCloseStamp = false
         if (typeof App !== "undefined" && App) {
+            if (App.logMemorySample)
+                App.logMemorySample("palette_closed")
             if (App.trimMemoryNow)
                 Qt.callLater(App.trimMemoryNow)
             else if (App.trimMemory)
@@ -87,8 +89,8 @@ Popup {
                 anchors.fill: parent
                 source: "../../resources/images/color_wheel.png"
                 smooth: true
-                mipmap: true
-                cache: true
+                mipmap: false
+                cache: false
             }
 
 

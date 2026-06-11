@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import uuid
 from pathlib import Path
 from typing import Any
 
@@ -103,6 +105,17 @@ class SettingsStore(QObject):
 
     def _save(self) -> None:
         self._base.mkdir(parents=True, exist_ok=True)
-        tmp = self._file.with_suffix(".tmp")
+        tmp = self._base / f"{self._file.stem}.{os.getpid()}.{uuid.uuid4().hex}.tmp"
         tmp.write_text(json.dumps(self._data, ensure_ascii=False, indent=2), encoding="utf-8")
         tmp.replace(self._file)
+        self._cleanup_stale_tmp_files()
+
+    def _cleanup_stale_tmp_files(self) -> None:
+        try:
+            for path in self._base.glob(f"{self._file.stem}.*.tmp"):
+                try:
+                    path.unlink()
+                except OSError:
+                    pass
+        except OSError:
+            pass

@@ -40,10 +40,30 @@ def trim_process_memory(engine=None, *, collect_qml: bool = False, empty_working
         except Exception:
             pass
     gc.collect()
-    if sys.platform == "win32" and empty_working_set and os.environ.get("QROUNDEDFRAME_ALLOW_WORKING_SET_TRIM", "").strip().lower() in {"1", "true", "yes"}:
+    if sys.platform == "win32" and empty_working_set:
         try:
             kernel32 = ctypes.windll.kernel32
             psapi = ctypes.windll.psapi
+            try:
+                # Windows 没有 glibc malloc_trim。HeapOptimizeResources 能请求系统回收
+                # 进程堆里空闲的底层资源；EmptyWorkingSet 则把可丢弃的物理页踢出
+                # 工作集。只在低内存档的低频清理里使用，避免交互路径反复缺页。
+                heap_optimize_resources = 3
+                kernel32.HeapSetInformation.argtypes = [
+                    ctypes.c_void_p,
+                    ctypes.c_int,
+                    ctypes.c_void_p,
+                    ctypes.c_size_t,
+                ]
+                kernel32.HeapSetInformation.restype = ctypes.c_bool
+                kernel32.HeapSetInformation(
+                    None,
+                    heap_optimize_resources,
+                    None,
+                    0,
+                )
+            except Exception:
+                pass
             handle = kernel32.GetCurrentProcess()
             try:
                 psapi.EmptyWorkingSet(handle)

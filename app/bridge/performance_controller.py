@@ -26,7 +26,8 @@ class PerformanceController(QObject):
         super().__init__(parent)
         self._settings = settings
         self._developer_key_file = app_data_dir() / "config" / "developer.key"
-        self._resource_profile = self._normalize_profile(settings.value_py("performance/resourceProfile", None))
+        env_profile = os.environ.get("QROUNDEDFRAME_RESOURCE_PROFILE", "").strip()
+        self._resource_profile = self._normalize_profile(env_profile or settings.value_py("performance/resourceProfile", None))
         legacy_low = settings.value_py("performance/lowMemoryMode", None)
         if legacy_low is not None and settings.value_py("performance/resourceProfile", None) is None:
             self._resource_profile = "low-memory" if bool(legacy_low) else "normal"
@@ -69,9 +70,9 @@ class PerformanceController(QObject):
         if self._resource_profile == profile:
             return
         self._resource_profile = profile
-        self._settings.set_value_py("performance/resourceProfile", profile)
         self.resourceProfileChanged.emit(profile)
         self._refresh_effective_profile()
+        self._settings.set_value_py("performance/resourceProfile", profile)
 
     @Slot(bool)
     def setLowMemoryMode(self, enabled: bool) -> None:

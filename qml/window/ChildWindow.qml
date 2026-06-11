@@ -24,9 +24,16 @@ FramelessWindow {
     modality: Qt.NonModal
 
     Loader {
+        id: pageLoader
         anchors.fill: parent
-        asynchronous: false
+        asynchronous: true
         source: child.pageSource
+    }
+
+    function releaseContent() {
+        pageLoader.source = ""
+        pageLoader.active = false
+        pageSource = ""
     }
 
     function applyParentWindow() {

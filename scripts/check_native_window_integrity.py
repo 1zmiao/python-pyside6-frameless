@@ -64,6 +64,12 @@ def check_native_agent() -> None:
         "msg->hwnd != hwnd",
         "WM_ERASEBKGND",
         "FillRect",
+        "void NativeWindowAgent::fillWindowBackground()",
+        "GetDC(hwnd)",
+        "ReleaseDC(hwnd, hdc)",
+        "m_inNativeSizeMove",
+        "m_window->requestUpdate();",
+        "clearWindowRegion();",
         "setShellBackgroundColor",
         "setResizeHitTestInsets",
         "applyWindowRegion(false)",
@@ -77,9 +83,26 @@ def check_native_agent() -> None:
             fail(f"{rel(path)} is missing required custom-path guard/code: {needle}")
     if "const DWORD ncPolicy = 1" in text:
         fail(f"{rel(path)} must keep DWM non-client rendering enabled on the custom path; disabling it can expose classic Win10 frame artifacts.")
-    resize_block = "case QEvent::Resize:\n            applyWindowRegion(false);"
+    resize_block = "case QEvent::Resize:\n#ifdef Q_OS_WIN\n            if (m_inNativeSizeMove) {\n                fillWindowBackground();\n            } else\n#endif\n            {\n                applyWindowRegion(false);\n            }"
     if resize_block not in text:
-        fail(f"{rel(path)} must keep live resize on region-only updates; do not force frame changes from QEvent::Resize.")
+        fail(f"{rel(path)} must not update SetWindowRgn from QEvent::Resize while native interactive resize is active.")
+    for forbidden_resize_backing in [
+        "resizeBackingWindowClassName",
+        "m_resizeBackingHwnd",
+        "windowOpaqueBacking",
+    ]:
+        if forbidden_resize_backing in text:
+            fail(f"{rel(path)} must not keep obsolete single-HWND resize-backing experiments: {forbidden_resize_backing}")
+    for needle in [
+        "Q_PROPERTY(bool nativeSizeMoveActive READ nativeSizeMoveActive NOTIFY nativeSizeMoveActiveChanged)",
+        "bool NativeWindowAgent::nativeSizeMoveActive() const",
+        "void NativeWindowAgent::setNativeSizeMoveActive(bool active)",
+        "emit nativeSizeMoveActiveChanged();",
+        "setNativeSizeMoveActive(true);",
+        "setNativeSizeMoveActive(false);",
+    ]:
+        if needle not in text:
+            fail(f"{rel(path)} must expose native interactive resize state to QML without resize-backing experiments: {needle}")
 
     qwk_path = ROOT / "third_party" / "qwindowkit" / "src" / "core" / "contexts" / "win32windowcontext.cpp"
     qwk_text = read_text(qwk_path)
@@ -163,12 +186,24 @@ def check_native_widget_host_agent() -> None:
         "SetWindowRgn",
         "WM_ERASEBKGND",
         "FillRect",
+        "void NativeWidgetHostAgent::fillHostWindowBackground()",
+        "GetDC(hwnd)",
+        "ReleaseDC(hwnd, hdc)",
+        "case WM_SIZING:\n        fillHostWindowBackground();",
+        "case WM_WINDOWPOSCHANGING:\n        fillHostWindowBackground();",
+        "case WM_WINDOWPOSCHANGED:\n        fillHostWindowBackground();",
         "DwmSetWindowAttribute",
         "DwmExtendFrameIntoClientArea",
         "captionHitTest",
         "activateWindowBeneathPoint",
         "nativeSizeMoveStarted",
         "nativeSizeMoveFinished",
+        "m_inNativeSizeMove",
+        "m_inNativeSizeMove = true;",
+        "clearWindowRegion(false);",
+        "if (!m_inNativeSizeMove) {",
+        "case WM_EXITSIZEMOVE:\n        m_inNativeSizeMove = false;\n        applyWindowRegion(false);",
+        "case WM_WINDOWPOSCHANGED:\n        fillHostWindowBackground();\n        if (!m_inNativeSizeMove) {\n            applyWindowRegion(false);\n        }\n        emit windowPositionChanged();",
     ]
     for needle in required:
         if needle not in text:
@@ -195,8 +230,16 @@ def check_native_widget_host_agent() -> None:
         "NativeHost.setShellBackgroundColor",
         "onNativeSizeMoveStarted",
         "onNativeSizeMoveFinished",
+        "property bool nativeSizeMoveActive: false",
+        "root.nativeSizeMoveActive = true",
+        "root.nativeSizeMoveActive = false",
+        "NativeHost.setNativeSizeMoveActive(true)",
+        "NativeHost.setNativeSizeMoveActive(false)",
+        "border.width: (root.nativeMaximized || root.nativeSizeMoveActive) ? 0 : root.stableHairline",
+        "visible: !root.nativeSizeMoveActive",
         "root.syncNativeState()",
         "NativeHost.refreshWindowsChrome",
+        "function onNativeShown()",
         "ExternalShadowController",
         "property bool nativeExternalShadow: root.nativeCustomShadow && Qt.platform.os === \"windows\"",
         "property bool inlineShadowVisible: root.nativeCustomShadow",
@@ -237,6 +280,9 @@ def check_external_shadow() -> None:
         "renderNativeShadowBitmap(state, shadowRect.size(), marginPx, guardPx, innerOverlapPx, opacityScale)",
         "painter.drawImage(dCenter, source, sCenter)",
         "showFlag",
+        "state.openingOpacityScale = 0.16",
+        "advanceOpeningFade(targetId, 1)",
+        "static constexpr int kFadeFrames = 8",
         "targetHwnd",
         "setNativeShadowForHwnd",
         "syncNativeShadowForHwnd",
@@ -372,26 +418,55 @@ def check_qml_shadow_path() -> None:
         "def setShellBackgroundColor(self, color) -> None:",
         "def animateShellBackgroundColor(self, from_color, to_color, duration_ms: int) -> None:",
         "def _set_shell_background_color(self, qcolor: QColor) -> None:",
-        "self._quick.setClearColor(self._shell_background_color)",
+        "widget.setClearColor(clear_color)",
+        "self._quick_host.setClearColor(self._shell_background_color)",
         "self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)",
         "self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, False)",
         "self.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)",
         "self.setAutoFillBackground(True)",
-        "self._quick.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)",
-        "self._quick.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, False)",
-        "self._quick.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)",
-        "self._quick.setAutoFillBackground(True)",
+        "QQuickWidget(engine, owner)",
+        "self._backing = QWidget(self)",
+        "self._set_widget_palette_color(self._backing, self._shell_background_color)",
+        "self._backing.setGeometry(backing_target)",
+        "self._backing.lower()",
+        "self._native_size_move_active = False",
+        'QROUNDEDFRAME_LIVE_RESIZE_GUARD_PX", "0"',
+        "def setNativeSizeMoveActive(self, active: bool) -> None:",
+        "def _quick_resize_guard(self) -> int:",
+        "def paintEvent(self, event):",
+        "painter.fillRect(self.rect(), self._shell_background_color)",
+        "widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)",
+        "widget.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, False)",
+        "widget.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)",
+        "widget.setAutoFillBackground(True)",
     ]:
         if needle not in host_text:
             fail(f"{rel(host_path)} must keep the QWidget/QQuickWidget host opaque while syncing the Qt Quick clear color.")
+    for forbidden_layout_host in [
+        "QVBoxLayout",
+        "self._content_layout",
+        "addWidget(self._quick)",
+        "QROUNDEDFRAME_ENABLE_QUICKVIEW_HOST",
+        "QROUNDEDFRAME_ENABLE_QUICKWIDGET_HOST",
+        "QQuickView(engine, None)",
+        "QWidget.createWindowContainer(view, owner)",
+        "view.setFlags(Qt.WindowType.Window)",
+        "view.setSource(source_url)",
+        "widget.setAttribute(Qt.WidgetAttribute.WA_NativeWindow, True)",
+        "widget.setAttribute(Qt.WidgetAttribute.WA_DontCreateNativeAncestors, True)",
+    ]:
+        if forbidden_layout_host in host_text:
+            fail(f"{rel(host_path)} must not force QQuickWidget into a native child window; QQuickWidgetClassWindow then receives invalid screen-level geometry.")
     for needle in [
         "self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)",
         "self.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)",
-        "self._quick.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)",
-        "self._quick.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)",
+        "widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)",
+        "widget.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, True)",
     ]:
         if needle in host_text:
             fail(f"{rel(host_path)} must not mark the main QWidget/QQuickWidget host transparent; live resize then exposes black backing pixels.")
+    if 'QROUNDEDFRAME_LIVE_RESIZE_GUARD_PX", "4"' in host_text:
+        fail(f"{rel(host_path)} must not default live resize guard to 4px; it visibly shrinks the bottom/right content edge during resize.")
     if "_normalize_vertical_snap_geometry" in host_text:
         fail(f"{rel(host_path)} must not rewrite Windows snap geometry around shadow insets.")
     if 'def _snap_target_for_cursor(self) -> tuple[QRect, str] | None:\n        if sys.platform == "win32":\n            return None' not in host_text:
@@ -427,6 +502,7 @@ def check_qml_shadow_path() -> None:
             fail(f"{rel(memory_tools_path)} / {rel(main_path)} must not restore the basic render-loop resize experiment: {needle}")
     for needle in [
         "use_qwindowkit_shell = should_use_qwindowkit_shell(window_policy, project_root)",
+        "QROUNDEDFRAME_DISABLE_QWINDOWKIT_MAIN_SHELL",
         "use_native_child_shell = native_runtime_available(project_root) and window_policy.native_shell_preferred",
         "native_window_shell=use_native_child_shell",
         "if use_qwindowkit_shell:",
@@ -437,12 +513,12 @@ def check_qml_shadow_path() -> None:
         "QQuickWindow.setGraphicsApi(QSGRendererInterface.GraphicsApi.Software)",
     ]:
         if needle not in main_text:
-            fail(f"{rel(main_path)} must keep main QWindowKit shell selection separate from native child-window shell selection.")
+            fail(f"{rel(main_path)} must keep QWindowKit as the default low-memory main-window shell: {needle}")
 
     native_agent_path = NATIVE_SRC / "native_window_agent.cpp"
     native_agent_text = read_text(native_agent_path)
-    if "setResizeHitTestInsets(4, 6)" not in native_agent_text:
-        fail(f"{rel(native_agent_path)} must use 4px edges and 6px corners for QWindowKit resize hit testing.")
+    if "setResizeHitTestInsets(6, 8)" not in native_agent_text:
+        fail(f"{rel(native_agent_path)} must use 6px edges and 8px corners for QWindowKit resize hit testing.")
     for needle in [
         "m_resizeEdgeInset",
         "m_resizeCornerInset",
@@ -469,6 +545,12 @@ def check_qml_shadow_path() -> None:
     ]:
         if needle in native_agent_text:
             fail(f"{rel(native_agent_path)} must not add GDI/live-resize repaint loops on top of QWindowKit's native resize path: {needle}")
+    for forbidden in [
+        "case WM_SIZING: {\n        fillWindowBackground();\n        m_window->requestUpdate();",
+        "case WM_WINDOWPOSCHANGING: {\n        fillWindowBackground();\n        WINDOWPOS *pos = reinterpret_cast<WINDOWPOS *>(msg->lParam);\n        m_window->requestUpdate();",
+    ]:
+        if forbidden in native_agent_text:
+            fail(f"{rel(native_agent_path)} must not force Qt Quick requestUpdate from high-frequency live-resize messages: {forbidden}")
 
     app_window_path = ROOT / "qml" / "window" / "AppWindow.qml"
     app_window_text = read_text(app_window_path)
@@ -476,18 +558,31 @@ def check_qml_shadow_path() -> None:
         fail(f"{rel(app_window_path)} must not paint a QML live-resize backdrop; it hides real content with solid theme color during fast resize.")
     if "id: background" not in app_window_text or "anchors.fill: parent" not in app_window_text:
         fail(f"{rel(app_window_path)} must keep the normal window background anchored to the actual QML window size.")
-
     native_widget_header = NATIVE_SRC / "native_widget_host_agent.h"
     if "qreal m_resizeBorder = 4.0;" not in read_text(native_widget_header):
         fail(f"{rel(native_widget_header)} must default QWidget-host resize hit testing to 4px edges.")
 
     resize_area_path = ROOT / "qml" / "window" / "ResizeArea.qml"
     resize_area_text = read_text(resize_area_path)
-    if "property int grip: 4" not in resize_area_text or "property int cornerGrip: 6" not in resize_area_text:
-        fail(f"{rel(resize_area_path)} must keep fallback resize areas at 4px edges and 6px corners.")
+    if "property int grip: 6" not in resize_area_text or "property int cornerGrip: 8" not in resize_area_text:
+        fail(f"{rel(resize_area_path)} must keep fallback resize areas at 6px edges and 8px corners.")
 
     if "snappedVisualKind === \"vertical\" ? normalShadowVisualInset" in legacy_child_text:
         fail(f"{rel(legacy_child_path)} must not keep horizontal shadow margins while snapped; Windows snap divider owns the outer bounds.")
+
+    native_main_path = ROOT / "qml" / "NativeMainContent.qml"
+    native_main_text = read_text(native_main_path)
+    if "onSizingOrPositionChanging: {\n            if (typeof NativeHost !== \"undefined\" && NativeHost && NativeHost.syncQuickGeometry)\n                NativeHost.syncQuickGeometry()\n            root.syncNativeState()\n            root.syncExternalShadow(false)" in native_main_text:
+        fail(f"{rel(native_main_path)} must not re-sync native shadow from QML during WM_SIZING; the C++ native event filter owns live shadow geometry.")
+    if "onSizingOrPositionChanging" in native_main_text and "NativeHost.syncQuickGeometry()" in native_main_text:
+        fail(f"{rel(native_main_path)} must not force QWidget-host quick geometry from QML during WM_SIZING; QWidget resizeEvent owns committed child geometry.")
+    if "onWidthChanged: {\n        Qt.callLater(root.syncNativeHitTestMetrics)\n        root.syncExternalShadow(false)" in native_main_text:
+        fail(f"{rel(native_main_path)} must not re-sync native shadow from QML width/height changes during live resize.")
+
+    widget_host_path = NATIVE_SRC / "native_widget_host_agent.cpp"
+    widget_host_text = read_text(widget_host_path)
+    if "case WM_SIZING:\n        if (msg->lParam)" in widget_host_text:
+        fail(f"{rel(widget_host_path)} must not update SetWindowRgn during interactive WM_SIZING; final region correction belongs to WM_EXITSIZEMOVE/WM_WINDOWPOSCHANGED.")
 
 
 def check_runtime_guards(tag: str) -> None:

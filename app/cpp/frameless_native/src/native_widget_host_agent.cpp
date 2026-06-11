@@ -637,6 +637,31 @@ void NativeWidgetHostAgent::applyWindowRegionForNativeSize(int width, int height
 #endif
 }
 
+void NativeWidgetHostAgent::fillHostWindowBackground()
+{
+#ifdef Q_OS_WIN
+    const quintptr host = parsedHwnd();
+    if (!host)
+        return;
+    HWND hwnd = reinterpret_cast<HWND>(host);
+    RECT rect = {};
+    if (!GetClientRect(hwnd, &rect))
+        return;
+    HDC hdc = GetDC(hwnd);
+    if (!hdc)
+        return;
+    const QColor color = m_shellBackgroundColor.isValid()
+                             ? m_shellBackgroundColor
+                             : QColor(16, 18, 24);
+    HBRUSH brush = CreateSolidBrush(RGB(color.red(), color.green(), color.blue()));
+    if (brush) {
+        FillRect(hdc, &rect, brush);
+        DeleteObject(brush);
+    }
+    ReleaseDC(hwnd, hdc);
+#endif
+}
+
 bool NativeWidgetHostAgent::nativeEventFilter(const QByteArray &eventType, void *message, qintptr *result)
 {
 #ifdef Q_OS_WIN
@@ -654,15 +679,31 @@ bool NativeWidgetHostAgent::nativeEventFilter(const QByteArray &eventType, void 
     HWND hwnd = reinterpret_cast<HWND>(host);
     if (!msg->hwnd || !hwnd)
         return false;
-    HWND hostRoot = GetAncestor(hwnd, GA_ROOT);
-    HWND messageRoot = GetAncestor(msg->hwnd, GA_ROOT);
-    if (msg->hwnd != hwnd && (!hostRoot || !messageRoot || hostRoot != messageRoot))
+
+    const bool messageForHost = msg->hwnd == hwnd;
+    const bool messageForHostChild = !messageForHost && IsChild(hwnd, msg->hwnd);
+    if (!messageForHost && !messageForHostChild)
+        return false;
+
+    switch (msg->message) {
+    case WM_NCHITTEST: {
+        const int hit = hitTest(msg->lParam);
+        if (hit != 0) {
+            if (result)
+                *result = hit;
+            return true;
+        }
+        break;
+    }
+    default:
+        break;
+    }
+
+    if (!messageForHost)
         return false;
 
     switch (msg->message) {
     case WM_ERASEBKGND: {
-        if (msg->hwnd != hwnd)
-            return false;
         HDC hdc = reinterpret_cast<HDC>(msg->wParam);
         if (!hdc)
             return false;
@@ -686,21 +727,24 @@ bool NativeWidgetHostAgent::nativeEventFilter(const QByteArray &eventType, void 
             *result = 0;
         return true;
     case WM_ENTERSIZEMOVE:
+        m_inNativeSizeMove = true;
+        clearWindowRegion(false);
         emit nativeSizeMoveStarted();
         break;
     case WM_EXITSIZEMOVE:
+        m_inNativeSizeMove = false;
+        applyWindowRegion(false);
         emit nativeSizeMoveFinished();
         break;
     case WM_SIZING:
-        if (msg->lParam) {
-            const RECT *rect = reinterpret_cast<const RECT *>(msg->lParam);
-            applyWindowRegionForNativeSize(rect->right - rect->left, rect->bottom - rect->top, false);
-        }
+        fillHostWindowBackground();
         emit sizingOrPositionChanging();
         break;
     case WM_WINDOWPOSCHANGING:
-        if (WINDOWPOS *pos = reinterpret_cast<WINDOWPOS *>(msg->lParam)) {
-            if (!(pos->flags & SWP_NOSIZE))
+        fillHostWindowBackground();
+        if (!m_inNativeSizeMove) {
+            WINDOWPOS *pos = reinterpret_cast<WINDOWPOS *>(msg->lParam);
+            if (pos && !(pos->flags & SWP_NOSIZE))
                 applyWindowRegionForNativeSize(pos->cx, pos->cy, false);
         }
         emit sizingOrPositionChanging();
@@ -709,7 +753,10 @@ bool NativeWidgetHostAgent::nativeEventFilter(const QByteArray &eventType, void 
         emit moving();
         break;
     case WM_WINDOWPOSCHANGED:
-        applyWindowRegion(false);
+        fillHostWindowBackground();
+        if (!m_inNativeSizeMove) {
+            applyWindowRegion(false);
+        }
         emit windowPositionChanged();
         break;
     case WM_NCRBUTTONDOWN:
@@ -734,15 +781,6 @@ bool NativeWidgetHostAgent::nativeEventFilter(const QByteArray &eventType, void 
             return false;
         }
         break;
-    case WM_NCHITTEST: {
-        const int hit = hitTest(msg->lParam);
-        if (hit != 0) {
-            if (result)
-                *result = hit;
-            return true;
-        }
-        break;
-    }
     default:
         break;
     }

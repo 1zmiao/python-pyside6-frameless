@@ -231,8 +231,6 @@ Item {
             return
         const dx = mx - activeMovePressX
         const dy = my - activeMovePressY
-        if (!activeMoveMoved && Math.abs(dx) + Math.abs(dy) < Core.Theme.dp(5))
-            return
         activeMoveMoved = true
         activeMoveWindow.x = mx - activeMoveAnchorX
         activeMoveWindow.y = my - activeMoveAnchorY
@@ -252,23 +250,13 @@ Item {
     }
 
     function pageSourceFor(page) {
-        if (page === "settings") return "../pages/SettingsPage.qml"
-        if (page === "tools") return "../pages/ToolsPage.qml"
-        if (page === "update") return "../pages/UpdatePage.qml"
-        if (page === "about") return "../pages/AboutPage.qml"
-        if (page === "inline-demo") return "../pages/InlineDemoPage.qml"
-        return "../pages/HomePage.qml"
+        return Core.AppInfo.pageSource(page)
     }
 
     function titleFor(page, fallbackTitle) {
         if (fallbackTitle && String(fallbackTitle).length > 0)
             return String(fallbackTitle)
-        if (page === "settings") return "\u8bbe\u7f6e"
-        if (page === "tools") return "\u5de5\u5177"
-        if (page === "update") return "\u66f4\u65b0"
-        if (page === "about") return "\u5173\u4e8e"
-        if (page === "inline-demo") return "\u9875\u5185\u5b50\u7a97\u53e3"
-        return "\u9996\u9875"
+        return Core.AppInfo.pageTitle(page)
     }
 
     function openPage(pageKey, title, props) {
@@ -310,12 +298,20 @@ Item {
         const obj = windowsByKey[key]
         if (!obj)
             return
+        if (typeof App !== "undefined" && App && App.logMemorySample)
+            App.logMemorySample("inline_child_close_before")
+        if (Core.InlineWindowBus.activeInlineKey === key)
+            Core.InlineWindowBus.setActiveInline("")
+        if (obj.releaseContent)
+            obj.releaseContent()
         delete windowsByKey[key]
         windowsByKey = windowsByKey
         refreshWindowCount()
         obj.destroy()
         layoutMinimized()
         trimMemoryDelay.restart()
+        if (typeof App !== "undefined" && App && App.logMemorySample)
+            Qt.callLater(function() { App.logMemorySample("inline_child_close_after_destroy") })
     }
 
     function restorePage(pageKey) {
@@ -458,11 +454,13 @@ Item {
         id: nativeMoveLoader
         z: 100001
         anchors.fill: parent
-        active: false
+        active: true
         source: active ? "../window/NativeInlineMoveArea.qml" : ""
         onStatusChanged: {
             if (status === Loader.Ready) {
                 root.nativeInlineMoveFailed = false
+                if (typeof App !== "undefined" && App && App.logRuntime)
+                    App.logRuntime("inline manager native drag ready")
             } else if (status === Loader.Error) {
                 root.nativeInlineMoveFailed = true
                 console.warn("Native inline drag area unavailable, using QML fallback")

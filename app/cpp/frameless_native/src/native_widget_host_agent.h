@@ -122,6 +122,7 @@ private:
     void applyWindowRegion(bool redraw = false);
     void applyWindowRegionForNativeSize(int width, int height, bool redraw = false);
     void clearWindowRegion(bool redraw = true);
+    void fillHostWindowBackground();
     int nativeCornerRadiusPx(int radius, quintptr host) const;
     int hitTest(qintptr lparam) const;
     int systemButtonHitTest(qreal localX, qreal localY) const;
@@ -150,4 +151,5 @@ private:
     int m_cornerRadius = 0;
     QSize m_lastRegionSize;
     int m_lastRegionRadius = -1;
+    bool m_inNativeSizeMove = false;
 };

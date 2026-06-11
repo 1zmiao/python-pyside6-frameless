@@ -21,12 +21,17 @@ Item {
     property int cornerRadius: Core.Theme.radius.window
     property string sideGlowModeKey: Core.Theme.mode
     property string sideGlowHex: String(Core.Theme.primary).replace("#", "")
+    property bool lowMemoryVisuals: Core.Theme.lowMemoryMode
+    property real sideGlowRenderScaleX: 1.0
+    property real sideGlowRenderScaleY: 0.50
+    property int sideGlowPixelWidth: Math.max(12, Math.round(34 * sideGlowRenderScaleX))
+    property int sideGlowPixelHeight: Math.max(96, Math.round(768 * sideGlowRenderScaleY / 48) * 48)
     property string currentSideGlowSource: sideGlowSource(sideGlowModeKey, sideGlowHex)
     property string pendingSideGlowSource: ""
     property bool sideGlowSwapping: false
 
     function sideGlowSource(mode, hex) {
-        return "image://cardaccent/side/" + mode + "/" + hex + "/" + root.cornerRadius + "/34x768"
+        return "image://cardaccent/side/" + mode + "/" + hex + "/" + root.cornerRadius + "/" + root.sideGlowPixelWidth + "x" + root.sideGlowPixelHeight + "/" + root.sideGlowRenderScaleX.toFixed(3) + "x" + root.sideGlowRenderScaleY.toFixed(3)
     }
 
     function refreshSideGlow() {
@@ -65,7 +70,7 @@ Item {
     }
 
     function sideGlowOpacityForMode(mode) {
-        return mode === "dark" ? 0.72 : 0.62
+        return mode === "dark" ? 0.96 : 0.83
     }
 
     function persistWidthLater() {
@@ -113,6 +118,8 @@ Item {
     onDevicePixelRatioChanged: snapCurrentWidthLater()
     onSideGlowHexChanged: refreshSideGlow()
     onCornerRadiusChanged: refreshSideGlow()
+    onSideGlowPixelWidthChanged: refreshSideGlow()
+    onSideGlowPixelHeightChanged: refreshSideGlow()
     Component.onCompleted: snapCurrentWidthLater()
 
     Item {
@@ -150,7 +157,7 @@ Item {
             z: 1
             radius: root.cornerRadius
             colorRole: "sidebar"
-            opacityScale: 0.82
+            opacityScale: 1.0
         }
     }
 
@@ -161,15 +168,15 @@ Item {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.right: parent.right
-        sourceSize.width: 34
-        sourceSize.height: 768
+        sourceSize.width: root.sideGlowPixelWidth
+        sourceSize.height: root.sideGlowPixelHeight
         source: root.currentSideGlowSource
         fillMode: Image.Stretch
         smooth: true
         asynchronous: false
         mipmap: false
         cache: false
-        retainWhileLoading: true
+        retainWhileLoading: false
         visible: root.width > 0
         opacity: root.sideGlowOpacityForMode(root.sideGlowModeKey)
     }
@@ -181,14 +188,14 @@ Item {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         anchors.right: parent.right
-        sourceSize.width: 34
-        sourceSize.height: 768
+        sourceSize.width: root.sideGlowPixelWidth
+        sourceSize.height: root.sideGlowPixelHeight
         fillMode: Image.Stretch
         smooth: true
         asynchronous: false
         mipmap: false
         cache: false
-        retainWhileLoading: true
+        retainWhileLoading: false
         visible: root.width > 0 && (opacity > 0.001 || String(source).length > 0)
         opacity: 0
     }
@@ -226,18 +233,13 @@ Item {
         visible: root.width > 0
 
         Repeater {
-            model: [
-                { "page": "home", "text": "\u9996\u9875", "icon": "home" },
-                { "page": "tools", "text": "\u5de5\u5177", "icon": "tools" },
-                { "page": "update", "text": "\u66f4\u65b0", "icon": "update" },
-                { "page": "about", "text": "\u5173\u4e8e", "icon": "about" }
-            ]
+            model: Core.AppInfo.navPageKeys
 
             delegate: NavItem {
                 width: navColumn.width
-                page: modelData.page
-                label: modelData.text
-                iconName: modelData.icon
+                page: modelData
+                label: Core.AppInfo.pageTitle(modelData)
+                iconName: Core.AppInfo.pageIcon(modelData)
             }
         }
     }
@@ -251,7 +253,7 @@ Item {
         height: root.width > 0 ? Core.Theme.metrics.navItemHeight : 0
         visible: root.width > 0
 
-        NavItem { anchors.fill: parent; page: "settings"; label: "\u8bbe\u7f6e"; iconName: "settings" }
+        NavItem { anchors.fill: parent; page: "settings"; label: Core.AppInfo.pageTitle("settings"); iconName: Core.AppInfo.pageIcon("settings") }
     }
 
     Rectangle {

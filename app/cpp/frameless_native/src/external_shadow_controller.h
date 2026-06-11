@@ -27,9 +27,11 @@ public:
     Q_INVOKABLE void stackShadowOnly(QObject *shadowWindow, QObject *targetWindow);
     Q_INVOKABLE void setNativeShadow(QObject *targetWindow, bool enabled, const QUrl &assetUrl, int shadowMargin, qreal opacity, int cornerRadius, const QColor &centerColor = QColor());
     Q_INVOKABLE void syncNativeShadow(QObject *targetWindow);
+    Q_INVOKABLE void fadeOutNativeShadow(QObject *targetWindow);
     Q_INVOKABLE void destroyNativeShadow(QObject *targetWindow);
     Q_INVOKABLE void setNativeShadowForHwnd(const QString &targetHwnd, bool enabled, const QUrl &assetUrl, int shadowMargin, qreal opacity, int cornerRadius, const QColor &centerColor = QColor());
     Q_INVOKABLE void syncNativeShadowForHwnd(const QString &targetHwnd);
+    Q_INVOKABLE void fadeOutNativeShadowForHwnd(const QString &targetHwnd);
     Q_INVOKABLE void destroyNativeShadowForHwnd(const QString &targetHwnd);
     Q_INVOKABLE bool isSnappedHwnd(const QString &targetHwnd) const;
     Q_INVOKABLE bool isSnapped(QObject *window) const;
@@ -61,6 +63,8 @@ private:
         bool everShown = false;
         bool openingFadeScheduled = false;
         qreal openingOpacityScale = 1.0;
+        bool hidingFadeScheduled = false;
+        qreal hidingOpacityScale = 1.0;
     };
 
     static QWindow *asWindow(QObject *object);
@@ -86,6 +90,8 @@ private:
     QImage renderNativeShadowBitmap(const NativeShadowState &state, const QSize &size, int marginPx, int outerPaddingPx, int innerOverlapPx, qreal opacityScale = 1.0) const;
     void updateNativeShadowBitmap(NativeShadowState &state, const QRect &targetRect, bool stackBehind, bool forceRepaint);
     void advanceOpeningFade(WId targetId, int step);
+    void startHidingFade(WId targetId);
+    void advanceHidingFade(WId targetId, int step);
     static QRect nativeTargetRect(QWindow *window);
     static int dpiScaled(int value, QWindow *window);
     static int dpiScaled(int value, WId targetId);

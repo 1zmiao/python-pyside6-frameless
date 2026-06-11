@@ -42,10 +42,7 @@ NativeWindowAgent::NativeWindowAgent(QObject *parent)
 }
 
 NativeWindowAgent::~NativeWindowAgent() {
-    restoreClassBackgroundBrush();
-    if (m_window)
-        m_window->removeEventFilter(this);
-    uninstallNativeShellFilter();
+    teardown();
 }
 
 void NativeWindowAgent::setup(QQuickWindow *window) {
@@ -57,10 +54,31 @@ void NativeWindowAgent::setup(QQuickWindow *window) {
     m_window->installEventFilter(this);
     QWK::QuickWindowAgent::setup(window);
     m_window->setColor(shellBackgroundColor());
+#ifdef Q_OS_WIN
+    m_hwnd = reinterpret_cast<void *>(m_window->winId());
+#endif
     QWK::QuickWindowAgent::setWindowAttribute(QStringLiteral("no-system-menu"), true);
-    setResizeHitTestInsets(4, 6);
+    setResizeHitTestInsets(6, 8);
     installNativeShellFilter();
     applyWindowAttributes();
+}
+
+void NativeWindowAgent::teardown() {
+    uninstallNativeShellFilter();
+    restoreClassBackgroundBrush();
+    if (m_window)
+        m_window->removeEventFilter(this);
+    m_window.clear();
+    m_titleBarItem.clear();
+    m_minimizeButton.clear();
+    m_maximizeButton.clear();
+    m_closeButton.clear();
+    m_lastRegionSize = QSize();
+    m_lastRegionRadius = -1;
+    m_inNativeSizeMove = false;
+#ifdef Q_OS_WIN
+    m_hwnd = nullptr;
+#endif
 }
 
 void NativeWindowAgent::setTitleBar(QQuickItem *item) {
@@ -127,7 +145,7 @@ void NativeWindowAgent::setShellBackgroundColor(const QColor &color) {
     if (m_window) {
         m_window->setColor(m_shellBackgroundColor);
 #ifdef Q_OS_WIN
-        HWND hwnd = reinterpret_cast<HWND>(m_window->winId());
+        HWND hwnd = reinterpret_cast<HWND>(m_hwnd);
         if (hwnd) {
             updateClassBackgroundBrush();
             InvalidateRect(hwnd, nullptr, FALSE);
@@ -159,6 +177,17 @@ bool NativeWindowAgent::isMaximized(QQuickWindow *window) const {
         return IsZoomed(hwnd);
 #endif
     return target->visibility() == QWindow::Maximized || target->visibility() == QWindow::FullScreen;
+}
+
+bool NativeWindowAgent::nativeSizeMoveActive() const {
+    return m_inNativeSizeMove;
+}
+
+void NativeWindowAgent::setNativeSizeMoveActive(bool active) {
+    if (m_inNativeSizeMove == active)
+        return;
+    m_inNativeSizeMove = active;
+    emit nativeSizeMoveActiveChanged();
 }
 
 void NativeWindowAgent::toggleMaximized(QQuickWindow *window) {
@@ -201,7 +230,14 @@ bool NativeWindowAgent::eventFilter(QObject *watched, QEvent *event) {
             applyWindowAttributes();
             break;
         case QEvent::Resize:
-            applyWindowRegion(false);
+#ifdef Q_OS_WIN
+            if (m_inNativeSizeMove) {
+                fillWindowBackground();
+            } else
+#endif
+            {
+                applyWindowRegion(false);
+            }
             break;
         default:
             break;
@@ -220,7 +256,7 @@ bool NativeWindowAgent::nativeEventFilter(const QByteArray &eventType, void *mes
     }
 
     MSG *msg = static_cast<MSG *>(message);
-    HWND hwnd = reinterpret_cast<HWND>(m_window->winId());
+    HWND hwnd = reinterpret_cast<HWND>(m_hwnd);
     if (!hwnd || !msg->hwnd)
         return false;
     HWND targetRoot = GetAncestor(hwnd, GA_ROOT);
@@ -238,6 +274,15 @@ bool NativeWindowAgent::nativeEventFilter(const QByteArray &eventType, void *mes
     }
 
     switch (msg->message) {
+    case WM_NCCALCSIZE:
+        if (m_customShadow && msg->hwnd == hwnd && msg->wParam) {
+            // 自定义圆角 + Qt Quick live resize 时，新增客户区如果不让 Windows 失效重绘，
+            // 快速放大窗口会短暂露出默认黑底。这里交给系统正常重绘，不用 timer 催 QML。
+            if (result)
+                *result = WVR_REDRAW;
+            return true;
+        }
+        return false;
     case WM_CLOSE:
         if (m_fastExitOnClose) {
             if (result)
@@ -274,20 +319,29 @@ bool NativeWindowAgent::nativeEventFilter(const QByteArray &eventType, void *mes
         return true;
     }
     case WM_ENTERSIZEMOVE:
+        setNativeSizeMoveActive(true);
+        // 缩放过程中保持圆角 region。之前清掉 region 会让拖拽中变直角，
+        // 也更容易在左上角缩放时露出底层窗口。
+        applyWindowRegion(false);
+        fillWindowBackground();
         return false;
     case WM_SIZING: {
+        fillWindowBackground();
         if (msg->lParam) {
             const RECT *rect = reinterpret_cast<const RECT *>(msg->lParam);
             const int targetWidth = rect->right - rect->left;
             const int targetHeight = rect->bottom - rect->top;
+            // 使用 Win32 目标尺寸提前更新 region，避免等 Qt 下一帧 Resize 后才修圆角。
             if (m_customShadow)
                 applyWindowRegionForNativeSize(targetWidth, targetHeight, false);
         }
         return false;
     }
     case WM_WINDOWPOSCHANGING: {
+        fillWindowBackground();
         WINDOWPOS *pos = reinterpret_cast<WINDOWPOS *>(msg->lParam);
         if (pos && !(pos->flags & SWP_NOSIZE) && pos->cx > 0 && pos->cy > 0) {
+            // 最大化/还原/贴边也会先到 WINDOWPOSCHANGING；和 WM_SIZING 走同一条 region 路线。
             if (m_customShadow)
                 applyWindowRegionForNativeSize(pos->cx, pos->cy, false);
         }
@@ -295,8 +349,13 @@ bool NativeWindowAgent::nativeEventFilter(const QByteArray &eventType, void *mes
     }
     case WM_SIZE:
     case WM_WINDOWPOSCHANGED:
+        fillWindowBackground();
         return false;
     case WM_EXITSIZEMOVE:
+        setNativeSizeMoveActive(false);
+        applyWindowRegion(false);
+        fillWindowBackground();
+        m_window->requestUpdate();
         return false;
     default:
         break;
@@ -336,7 +395,7 @@ void NativeWindowAgent::applyWindowAttributes() {
     m_window->setColor(shellBackgroundColor());
 
 #ifdef Q_OS_WIN
-    HWND hwnd = reinterpret_cast<HWND>(m_window->winId());
+    HWND hwnd = reinterpret_cast<HWND>(m_hwnd);
     if (!hwnd)
         return;
     updateClassBackgroundBrush();
@@ -381,7 +440,7 @@ void NativeWindowAgent::applyWindowRegion(bool redraw) {
 #ifdef Q_OS_WIN
     if (!m_window)
         return;
-    HWND hwnd = reinterpret_cast<HWND>(m_window->winId());
+    HWND hwnd = reinterpret_cast<HWND>(m_hwnd);
     if (!hwnd)
         return;
 
@@ -410,7 +469,7 @@ void NativeWindowAgent::applyWindowRegionForNativeSize(int width, int height, bo
 #ifdef Q_OS_WIN
     if (!m_window)
         return;
-    HWND hwnd = reinterpret_cast<HWND>(m_window->winId());
+    HWND hwnd = reinterpret_cast<HWND>(m_hwnd);
     if (!hwnd)
         return;
     if (width <= 0 || height <= 0)
@@ -442,6 +501,29 @@ void NativeWindowAgent::applyWindowRegionForNativeSize(int width, int height, bo
 #endif
 }
 
+void NativeWindowAgent::fillWindowBackground() {
+#ifdef Q_OS_WIN
+    if (!m_window)
+        return;
+    HWND hwnd = reinterpret_cast<HWND>(m_hwnd);
+    if (!hwnd)
+        return;
+    RECT rect = {};
+    if (!GetClientRect(hwnd, &rect))
+        return;
+    HDC hdc = GetDC(hwnd);
+    if (!hdc)
+        return;
+    const QColor color = shellBackgroundColor();
+    HBRUSH brush = CreateSolidBrush(RGB(color.red(), color.green(), color.blue()));
+    if (brush) {
+        FillRect(hdc, &rect, brush);
+        DeleteObject(brush);
+    }
+    ReleaseDC(hwnd, hdc);
+#endif
+}
+
 void NativeWindowAgent::installNativeShellFilter() {
 #ifdef Q_OS_WIN
     if (m_nativeShellFilterInstalled || !qApp)
@@ -462,9 +544,7 @@ void NativeWindowAgent::uninstallNativeShellFilter() {
 
 void NativeWindowAgent::updateClassBackgroundBrush() {
 #ifdef Q_OS_WIN
-    if (!m_window)
-        return;
-    HWND hwnd = reinterpret_cast<HWND>(m_window->winId());
+    HWND hwnd = reinterpret_cast<HWND>(m_hwnd);
     if (!hwnd)
         return;
 
@@ -485,8 +565,8 @@ void NativeWindowAgent::updateClassBackgroundBrush() {
 
 void NativeWindowAgent::restoreClassBackgroundBrush() {
 #ifdef Q_OS_WIN
-    if (m_window) {
-        HWND hwnd = reinterpret_cast<HWND>(m_window->winId());
+    if (m_hwnd) {
+        HWND hwnd = reinterpret_cast<HWND>(m_hwnd);
         if (hwnd && m_previousClassBackgroundBrush) {
             SetClassLongPtrW(hwnd, GCLP_HBRBACKGROUND,
                              static_cast<LONG_PTR>(m_previousClassBackgroundBrush));
@@ -502,8 +582,8 @@ void NativeWindowAgent::restoreClassBackgroundBrush() {
 
 int NativeWindowAgent::nativeSystemButtonHitTest(qintptr lParam) const {
 #ifdef Q_OS_WIN
-    if (m_window) {
-        HWND hwnd = reinterpret_cast<HWND>(m_window->winId());
+    if (m_hwnd) {
+        HWND hwnd = reinterpret_cast<HWND>(m_hwnd);
         RECT rect = {};
         if (hwnd && GetWindowRect(hwnd, &rect)) {
             const POINT cursor = {
@@ -542,7 +622,7 @@ bool NativeWindowAgent::nativeItemContainsScreenPoint(QQuickItem *item, qintptr 
         LONG(qRound(rect.left() * dpr)),
         LONG(qRound(rect.top() * dpr)),
     };
-    HWND hwnd = reinterpret_cast<HWND>(m_window->winId());
+    HWND hwnd = reinterpret_cast<HWND>(m_hwnd);
     if (!hwnd)
         return false;
     if (!ClientToScreen(hwnd, &local))
@@ -569,7 +649,7 @@ void NativeWindowAgent::clearWindowRegion() {
 #ifdef Q_OS_WIN
     if (!m_window)
         return;
-    HWND hwnd = reinterpret_cast<HWND>(m_window->winId());
+    HWND hwnd = reinterpret_cast<HWND>(m_hwnd);
     if (hwnd)
         SetWindowRgn(hwnd, nullptr, TRUE);
     m_lastRegionSize = QSize();

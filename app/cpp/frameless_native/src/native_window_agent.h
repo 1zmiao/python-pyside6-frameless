@@ -16,12 +16,14 @@
 class NativeWindowAgent : public QWK::QuickWindowAgent, public QAbstractNativeEventFilter {
     Q_OBJECT
     QML_ELEMENT
+    Q_PROPERTY(bool nativeSizeMoveActive READ nativeSizeMoveActive NOTIFY nativeSizeMoveActiveChanged)
 
 public:
     explicit NativeWindowAgent(QObject *parent = nullptr);
     ~NativeWindowAgent() override;
 
     Q_INVOKABLE void setup(QQuickWindow *window);
+    Q_INVOKABLE void teardown();
     Q_INVOKABLE void setTitleBar(QQuickItem *item);
     Q_INVOKABLE void setSystemButton(const QString &role, QQuickItem *item);
     Q_INVOKABLE void setHitTestVisible(QQuickItem *item, bool visible);
@@ -33,6 +35,10 @@ public:
     Q_INVOKABLE void setFastExitOnClose(bool enabled);
     Q_INVOKABLE bool isMaximized(QQuickWindow *window) const;
     Q_INVOKABLE void toggleMaximized(QQuickWindow *window);
+    bool nativeSizeMoveActive() const;
+
+signals:
+    void nativeSizeMoveActiveChanged();
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -44,6 +50,7 @@ private:
     void applyWindowRegion(bool redraw = true);
     void applyWindowRegionForNativeSize(int width, int height, bool redraw = false);
     void clearWindowRegion();
+    void fillWindowBackground();
     void installNativeShellFilter();
     void uninstallNativeShellFilter();
     void updateClassBackgroundBrush();
@@ -51,6 +58,7 @@ private:
     int nativeSystemButtonHitTest(qintptr lParam) const;
     bool nativeItemContainsScreenPoint(QQuickItem *item, qintptr lParam) const;
     QColor shellBackgroundColor() const;
+    void setNativeSizeMoveActive(bool active);
 
     QPointer<QQuickWindow> m_window;
     QPointer<QQuickItem> m_titleBarItem;
@@ -64,11 +72,13 @@ private:
     int m_cornerRadius = 0;
     QSize m_lastRegionSize;
     int m_lastRegionRadius = -1;
-    int m_resizeEdgeInset = 4;
-    int m_resizeCornerInset = 6;
+    bool m_inNativeSizeMove = false;
+    int m_resizeEdgeInset = 6;
+    int m_resizeCornerInset = 8;
     bool m_fastExitOnClose = false;
     QColor m_shellBackgroundColor;
     QUrl m_shadowSource;
     int m_shadowMargin = 0;
     qreal m_shadowOpacity = 1.0;
+    void *m_hwnd = nullptr;
 };

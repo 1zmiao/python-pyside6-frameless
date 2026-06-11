@@ -10,20 +10,27 @@ Item {
     // The accent image is a soft glow that is stretched to the card bounds.
     // Bucket dimensions aggressively so live window resizing does not request
     // a new provider image for every single pixel delta.
-    property int renderStep: Core.Theme.lowMemoryMode ? 64 : 48
-    property int pixelWidth: Math.max(1, Math.round(width / renderStep) * renderStep)
-    property int pixelHeight: Math.max(1, Math.round(height / renderStep) * renderStep)
-    property int pixelRadius: Math.max(0, Math.round(radius))
+    property bool liveResizeLowResolution: root.Window.window
+                                           && root.Window.window.nativeSizeMoveActive !== undefined
+                                           && root.Window.window.nativeSizeMoveActive
+    property bool lowMemoryVisuals: Core.Theme.lowMemoryMode
+    property real renderScaleX: 0.50
+    property real renderScaleY: 1.0
+    property int renderStep: liveResizeLowResolution ? 128 : (lowMemoryVisuals ? 64 : 48)
+    property int pixelWidth: Math.max(24, Math.round((width * renderScaleX) / renderStep) * renderStep)
+    property int pixelHeight: Math.max(24, Math.round((height * renderScaleY) / renderStep) * renderStep)
+    property int pixelRadius: Math.max(0, Math.round(radius * Math.min(renderScaleX, renderScaleY)))
     property bool glowSwapPending: false
     property string pendingImageSource: ""
-
-    property bool lowMemoryVisuals: false
+    property bool diagnosticDisabled: typeof App !== "undefined"
+                                      && App
+                                      && String(App.envValue("QROUNDEDFRAME_DISABLE_CARD_ACCENT_GLOW")).toLowerCase() === "1"
 
     anchors.fill: parent
-    visible: width > 0 && height > 0
+    visible: !diagnosticDisabled && width > 0 && height > 0
 
     function imageName() {
-        return "image://cardaccent/card/" + root.modeKey + "/" + root.liveHex + "/" + root.pixelRadius + "/" + root.pixelWidth + "x" + root.pixelHeight
+        return "image://cardaccent/card/" + root.modeKey + "/" + root.liveHex + "/" + root.pixelRadius + "/" + root.pixelWidth + "x" + root.pixelHeight + "/" + root.renderScaleX.toFixed(3) + "x" + root.renderScaleY.toFixed(3)
     }
 
     Item {
@@ -40,7 +47,7 @@ Item {
             asynchronous: false
             mipmap: false
             cache: false
-            retainWhileLoading: true
+            retainWhileLoading: false
             opacity: 1.0
         }
 
@@ -54,7 +61,7 @@ Item {
             asynchronous: false
             mipmap: false
             cache: false
-            retainWhileLoading: true
+            retainWhileLoading: false
             opacity: 0.0
             visible: opacity > 0.001 || String(source).length > 0
         }
@@ -63,9 +70,25 @@ Item {
             target: root
             function onLiveHexChanged() { root.updateSizeOnly() }
             function onModeKeyChanged() { root.scheduleGlowSwap() }
-            function onPixelWidthChanged() { root.updateSizeOnly() }
-            function onPixelHeightChanged() { root.updateSizeOnly() }
+            function onPixelWidthChanged() { if (!root.liveResizeLowResolution) root.updateSizeOnly() }
+            function onPixelHeightChanged() { if (!root.liveResizeLowResolution) root.updateSizeOnly() }
             function onPixelRadiusChanged() { root.updateSizeOnly() }
+            function onLowMemoryVisualsChanged() {
+                root.finishGlowSwap()
+                root.updateSizeOnly()
+            }
+            function onRenderScaleXChanged() {
+                root.finishGlowSwap()
+                root.updateSizeOnly()
+            }
+            function onRenderScaleYChanged() {
+                root.finishGlowSwap()
+                root.updateSizeOnly()
+            }
+            function onLiveResizeLowResolutionChanged() {
+                if (!root.liveResizeLowResolution)
+                    root.updateSizeOnly()
+            }
         }
     }
 
@@ -139,5 +162,13 @@ Item {
         duration: Core.Theme.animatedColorTransitionMs
         easing.type: Easing.InOutCubic
         onFinished: root.finishGlowSwap()
+    }
+
+    Component.onDestruction: {
+        currentFade.stop()
+        nextFade.stop()
+        currentImage.source = ""
+        nextImage.source = ""
+        root.pendingImageSource = ""
     }
 }

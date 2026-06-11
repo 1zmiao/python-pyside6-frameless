@@ -83,13 +83,18 @@ Module {
             Parameter { name: "targetWindow"; type: "QObject"; isPointer: true }
         }
         Method {
-            name: "destroyNativeShadow"
+            name: "fadeOutNativeShadow"
             lineNumber: 30
             Parameter { name: "targetWindow"; type: "QObject"; isPointer: true }
         }
         Method {
-            name: "setNativeShadowForHwnd"
+            name: "destroyNativeShadow"
             lineNumber: 31
+            Parameter { name: "targetWindow"; type: "QObject"; isPointer: true }
+        }
+        Method {
+            name: "setNativeShadowForHwnd"
+            lineNumber: 32
             Parameter { name: "targetHwnd"; type: "QString" }
             Parameter { name: "enabled"; type: "bool" }
             Parameter { name: "assetUrl"; type: "QUrl" }
@@ -101,7 +106,7 @@ Module {
         Method {
             name: "setNativeShadowForHwnd"
             isCloned: true
-            lineNumber: 31
+            lineNumber: 32
             Parameter { name: "targetHwnd"; type: "QString" }
             Parameter { name: "enabled"; type: "bool" }
             Parameter { name: "assetUrl"; type: "QUrl" }
@@ -111,32 +116,37 @@ Module {
         }
         Method {
             name: "syncNativeShadowForHwnd"
-            lineNumber: 32
+            lineNumber: 33
+            Parameter { name: "targetHwnd"; type: "QString" }
+        }
+        Method {
+            name: "fadeOutNativeShadowForHwnd"
+            lineNumber: 34
             Parameter { name: "targetHwnd"; type: "QString" }
         }
         Method {
             name: "destroyNativeShadowForHwnd"
-            lineNumber: 33
+            lineNumber: 35
             Parameter { name: "targetHwnd"; type: "QString" }
         }
         Method {
             name: "isSnappedHwnd"
             type: "bool"
             isMethodConstant: true
-            lineNumber: 34
+            lineNumber: 36
             Parameter { name: "targetHwnd"; type: "QString" }
         }
         Method {
             name: "isSnapped"
             type: "bool"
             isMethodConstant: true
-            lineNumber: 35
+            lineNumber: 37
             Parameter { name: "window"; type: "QObject"; isPointer: true }
         }
     }
     Component {
         file: "native_child_window_manager.h"
-        lineNumber: 12
+        lineNumber: 13
         name: "NativeChildWindowManager"
         accessSemantics: "reference"
         prototype: "QObject"
@@ -150,12 +160,12 @@ Module {
             write: "setBridge"
             notify: "bridgeChanged"
             index: 0
-            lineNumber: 15
+            lineNumber: 16
         }
-        Signal { name: "bridgeChanged"; lineNumber: 34 }
+        Signal { name: "bridgeChanged"; lineNumber: 35 }
         Method {
             name: "handleWindowEvent"
-            lineNumber: 37
+            lineNumber: 38
             Parameter { name: "eventType"; type: "QString" }
             Parameter { name: "payload"; type: "QVariant" }
         }
@@ -163,7 +173,7 @@ Module {
             name: "openChild"
             type: "QObject"
             isPointer: true
-            lineNumber: 24
+            lineNumber: 25
             Parameter { name: "windowSource"; type: "QUrl" }
             Parameter { name: "pageSource"; type: "QUrl" }
             Parameter { name: "pageTitle"; type: "QString" }
@@ -176,7 +186,7 @@ Module {
             type: "QObject"
             isPointer: true
             isCloned: true
-            lineNumber: 24
+            lineNumber: 25
             Parameter { name: "windowSource"; type: "QUrl" }
             Parameter { name: "pageSource"; type: "QUrl" }
             Parameter { name: "pageTitle"; type: "QString" }
@@ -185,14 +195,14 @@ Module {
         }
         Method {
             name: "closeChild"
-            lineNumber: 30
+            lineNumber: 31
             Parameter { name: "windowKey"; type: "QString" }
         }
-        Method { name: "closeAll"; lineNumber: 31 }
+        Method { name: "closeAll"; lineNumber: 32 }
     }
     Component {
         file: "native_inline_drag_area.h"
-        lineNumber: 8
+        lineNumber: 10
         name: "NativeInlineDragArea"
         accessSemantics: "reference"
         defaultProperty: "data"
@@ -208,7 +218,7 @@ Module {
             write: "setTarget"
             notify: "targetChanged"
             index: 0
-            lineNumber: 11
+            lineNumber: 13
         }
         Property {
             name: "titleBarHeight"
@@ -217,7 +227,7 @@ Module {
             write: "setTitleBarHeight"
             notify: "titleBarHeightChanged"
             index: 1
-            lineNumber: 12
+            lineNumber: 14
         }
         Property {
             name: "controlsReserve"
@@ -226,7 +236,7 @@ Module {
             write: "setControlsReserve"
             notify: "controlsReserveChanged"
             index: 2
-            lineNumber: 13
+            lineNumber: 15
         }
         Property {
             name: "edgeResizeReserve"
@@ -235,17 +245,17 @@ Module {
             write: "setEdgeResizeReserve"
             notify: "edgeResizeReserveChanged"
             index: 3
-            lineNumber: 14
+            lineNumber: 16
         }
-        Signal { name: "targetChanged"; lineNumber: 32 }
-        Signal { name: "titleBarHeightChanged"; lineNumber: 33 }
-        Signal { name: "controlsReserveChanged"; lineNumber: 34 }
-        Signal { name: "edgeResizeReserveChanged"; lineNumber: 35 }
-        Signal { name: "dragStarted"; lineNumber: 36 }
-        Signal { name: "clicked"; lineNumber: 37 }
+        Signal { name: "targetChanged"; lineNumber: 35 }
+        Signal { name: "titleBarHeightChanged"; lineNumber: 36 }
+        Signal { name: "controlsReserveChanged"; lineNumber: 37 }
+        Signal { name: "edgeResizeReserveChanged"; lineNumber: 38 }
+        Signal { name: "dragStarted"; lineNumber: 39 }
+        Signal { name: "clicked"; lineNumber: 40 }
         Signal {
             name: "targetClicked"
-            lineNumber: 38
+            lineNumber: 41
             Parameter { name: "pageKey"; type: "QVariant" }
         }
     }
@@ -550,71 +560,82 @@ Module {
         prototype: "QAbstractNativeEventFilter"
         exports: ["FramelessNative/NativeWindowAgent 1.0"]
         exportMetaObjectRevisions: [256]
+        Property {
+            name: "nativeSizeMoveActive"
+            type: "bool"
+            read: "nativeSizeMoveActive"
+            notify: "nativeSizeMoveActiveChanged"
+            index: 0
+            lineNumber: 19
+            isReadonly: true
+        }
+        Signal { name: "nativeSizeMoveActiveChanged"; lineNumber: 41 }
         Method {
             name: "setup"
-            lineNumber: 24
+            lineNumber: 25
             Parameter { name: "window"; type: "QQuickWindow"; isPointer: true }
         }
+        Method { name: "teardown"; lineNumber: 26 }
         Method {
             name: "setTitleBar"
-            lineNumber: 25
+            lineNumber: 27
             Parameter { name: "item"; type: "QQuickItem"; isPointer: true }
         }
         Method {
             name: "setSystemButton"
-            lineNumber: 26
+            lineNumber: 28
             Parameter { name: "role"; type: "QString" }
             Parameter { name: "item"; type: "QQuickItem"; isPointer: true }
         }
         Method {
             name: "setHitTestVisible"
-            lineNumber: 27
+            lineNumber: 29
             Parameter { name: "item"; type: "QQuickItem"; isPointer: true }
             Parameter { name: "visible"; type: "bool" }
         }
         Method {
             name: "setCustomShadowEnabled"
-            lineNumber: 28
+            lineNumber: 30
             Parameter { name: "enabled"; type: "bool" }
         }
         Method {
             name: "setCornerRadius"
-            lineNumber: 29
+            lineNumber: 31
             Parameter { name: "radius"; type: "int" }
         }
         Method {
             name: "setShadowAsset"
-            lineNumber: 30
+            lineNumber: 32
             Parameter { name: "source"; type: "QUrl" }
             Parameter { name: "margin"; type: "int" }
             Parameter { name: "opacity"; type: "double" }
         }
         Method {
             name: "setShellBackgroundColor"
-            lineNumber: 31
+            lineNumber: 33
             Parameter { name: "color"; type: "QColor" }
         }
         Method {
             name: "setResizeHitTestInsets"
-            lineNumber: 32
+            lineNumber: 34
             Parameter { name: "edgeInset"; type: "int" }
             Parameter { name: "cornerInset"; type: "int" }
         }
         Method {
             name: "setFastExitOnClose"
-            lineNumber: 33
+            lineNumber: 35
             Parameter { name: "enabled"; type: "bool" }
         }
         Method {
             name: "isMaximized"
             type: "bool"
             isMethodConstant: true
-            lineNumber: 34
+            lineNumber: 36
             Parameter { name: "window"; type: "QQuickWindow"; isPointer: true }
         }
         Method {
             name: "toggleMaximized"
-            lineNumber: 35
+            lineNumber: 37
             Parameter { name: "window"; type: "QQuickWindow"; isPointer: true }
         }
     }

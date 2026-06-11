@@ -7,6 +7,7 @@ AppWindow {
     bridge: App
     autoRestoreWindowState: false
     autoShow: false
+    destroyOnChildClose: true
     showNavToggle: false
     showColorButton: false
     showThemeButton: false
@@ -28,13 +29,14 @@ AppWindow {
     Loader {
         id: pageLoader
         anchors.fill: parent
-        asynchronous: false
+        asynchronous: true
         active: !child.contentReleased
         source: child.contentReleased ? "" : child.pageSource
     }
 
     function prepareContent(sourceUrl) {
         alwaysOnTop = false
+        _childCloseScheduled = false
         pageSource = sourceUrl
         contentReleased = false
     }
@@ -42,6 +44,8 @@ AppWindow {
     function releaseContent() {
         contentReleased = true
         pageSource = ""
+        pageLoader.source = ""
+        pageLoader.active = false
     }
 
     function applyParentWindow() {

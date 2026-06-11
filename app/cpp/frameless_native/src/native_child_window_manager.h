@@ -3,6 +3,7 @@
 #include <QtCore/QHash>
 #include <QtCore/QObject>
 #include <QtCore/QPointer>
+#include <QtCore/QSet>
 #include <QtCore/QUrl>
 #include <QtCore/QVariantMap>
 #include <QtQml/QQmlComponent>
@@ -47,4 +48,5 @@ private:
     QHash<QUrl, QQmlComponent *> m_components;
     QHash<QString, QPointer<QObject>> m_windowsByKey;
     QHash<QObject *, QString> m_keysByWindow;
+    QSet<QObject *> m_releasingWindows;
 };

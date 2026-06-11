@@ -14,6 +14,7 @@ from PySide6.QtQuickControls2 import QQuickStyle
 from app.bridge.app_bridge import AppBridge
 from app.bridge.util import runtime_root
 from app.native.runtime import configure_native_runtime, native_runtime_available, native_runtime_variant
+from app.runtime_logging import install_qt_message_logging, write_runtime_log
 from app.window_policy import current_window_policy
 
 _SMOKE_TIMERS: list[QTimer] = []
@@ -125,7 +126,11 @@ def schedule_smoke_close(root_objects) -> None:
         child_timer = QTimer(QCoreApplication.instance())
         child_timer.setSingleShot(True)
         child_timer.timeout.connect(open_child)
-        child_timer.start(max(0, min(interval - 250, 700)))
+        try:
+            child_open_interval = int(os.environ.get("QROUNDEDFRAME_SMOKE_CHILD_OPEN_MS", "700"))
+        except ValueError:
+            child_open_interval = 700
+        child_timer.start(max(0, min(interval - 250, child_open_interval)))
         _SMOKE_TIMERS.append(child_timer)
 
         if child_close_ms:
@@ -180,6 +185,176 @@ def schedule_smoke_close(root_objects) -> None:
                 child_close_timer.timeout.connect(close_child)
                 child_close_timer.start(child_close_interval)
                 _SMOKE_TIMERS.append(child_close_timer)
+        child_reopen_ms = os.environ.get("QROUNDEDFRAME_SMOKE_CHILD_REOPEN_MS", "").strip()
+        if child_reopen_ms:
+            try:
+                child_reopen_interval = max(0, int(child_reopen_ms))
+            except ValueError:
+                child_reopen_interval = 0
+            if child_reopen_interval > 0:
+                reopen_timer = QTimer(QCoreApplication.instance())
+                reopen_timer.setSingleShot(True)
+                reopen_timer.timeout.connect(open_child)
+                reopen_timer.start(max(0, min(interval - 250, child_reopen_interval)))
+                _SMOKE_TIMERS.append(reopen_timer)
+
+        second_child_page = os.environ.get("QROUNDEDFRAME_SMOKE_SECOND_CHILD_PAGE", "").strip()
+        second_child_ms = os.environ.get("QROUNDEDFRAME_SMOKE_SECOND_CHILD_OPEN_MS", "").strip()
+        if second_child_page and second_child_ms:
+            try:
+                second_child_interval = max(0, int(second_child_ms))
+            except ValueError:
+                second_child_interval = 0
+            if second_child_interval > 0:
+                def open_second_child() -> None:
+                    try:
+                        bridge = bridge_for_root()
+                        if bridge is not None and hasattr(bridge, "dialogs"):
+                            bridge.dialogs.openChild(root, second_child_page, {})
+                            print(f"smoke second child opened: {second_child_page}", flush=True)
+                    except Exception as exc:
+                        print(f"smoke second child open failed: {second_child_page}: {exc}", flush=True)
+
+                second_child_timer = QTimer(QCoreApplication.instance())
+                second_child_timer.setSingleShot(True)
+                second_child_timer.timeout.connect(open_second_child)
+                second_child_timer.start(max(0, min(interval - 250, second_child_interval)))
+                _SMOKE_TIMERS.append(second_child_timer)
+
+        child_second_close_ms = os.environ.get("QROUNDEDFRAME_SMOKE_CHILD_SECOND_CLOSE_MS", "").strip()
+        if child_second_close_ms:
+            try:
+                child_second_close_interval = max(0, int(child_second_close_ms))
+            except ValueError:
+                child_second_close_interval = 0
+            if child_second_close_interval > 0:
+                def close_child_again() -> None:
+                    try:
+                        bridge = bridge_for_root()
+                        if bridge is not None and hasattr(bridge, "dialogs"):
+                            bridge.dialogs.closeAll()
+                            print("smoke child second closeAll returned", flush=True)
+                            QTimer.singleShot(450, lambda: print_smoke_window_state("child_second_close_450ms"))
+                            QTimer.singleShot(1600, lambda: print_smoke_window_state("child_second_close_1600ms"))
+                    except Exception as exc:
+                        print(f"smoke child second close failed: {exc}", flush=True)
+
+                second_close_timer = QTimer(QCoreApplication.instance())
+                second_close_timer.setSingleShot(True)
+                second_close_timer.timeout.connect(close_child_again)
+                second_close_timer.start(max(0, min(interval - 250, child_second_close_interval)))
+                _SMOKE_TIMERS.append(second_close_timer)
+    theme_toggle_ms = os.environ.get("QROUNDEDFRAME_SMOKE_THEME_TOGGLE_MS", "").strip()
+    if theme_toggle_ms:
+        try:
+            theme_toggle_interval = max(0, min(interval - 250, int(theme_toggle_ms)))
+        except ValueError:
+            theme_toggle_interval = 0
+        if theme_toggle_interval > 0:
+            def toggle_theme() -> None:
+                try:
+                    bridge = bridge_for_root()
+                    current = str(getattr(bridge.theme, "mode", "dark")) if bridge is not None and hasattr(bridge, "theme") else "dark"
+                    next_mode = "light" if current == "dark" else "dark"
+                    change_with_ripple = getattr(root, "changeThemeWithRipple", None)
+                    if callable(change_with_ripple):
+                        change_with_ripple(next_mode, 0, 0)
+                    elif bridge is not None and hasattr(bridge, "theme"):
+                        bridge.theme.setRippleOrigin(0, 0)
+                        bridge.theme.setMode(next_mode)
+                    print(f"smoke theme toggled: {current}->{next_mode}", flush=True)
+                except Exception as exc:
+                    print(f"smoke theme toggle failed: {exc}", flush=True)
+
+            theme_timer = QTimer(QCoreApplication.instance())
+            theme_timer.setSingleShot(True)
+            theme_timer.timeout.connect(toggle_theme)
+            theme_timer.start(theme_toggle_interval)
+            _SMOKE_TIMERS.append(theme_timer)
+    smoke_actions = [
+        ("QROUNDEDFRAME_SMOKE_OPEN_MENU_MS", "smokeOpenTitleMenu", "menu"),
+        ("QROUNDEDFRAME_SMOKE_OPEN_PALETTE_MS", "smokeOpenPalette", "palette"),
+    ]
+    for env_name, method_name, label in smoke_actions:
+        action_ms = os.environ.get(env_name, "").strip()
+        if not action_ms:
+            continue
+        try:
+            action_interval = max(0, min(interval - 250, int(action_ms)))
+        except ValueError:
+            action_interval = 0
+        if action_interval <= 0:
+            continue
+
+        def trigger_action(method_name=method_name, label=label) -> None:
+            try:
+                method = getattr(root, method_name, None)
+                result = method() if callable(method) else False
+                print(f"smoke {label} open requested: {result}", flush=True)
+                def print_popup_state() -> None:
+                    try:
+                        state_method = getattr(root, "smokePopupState", None)
+                        state = state_method() if callable(state_method) else {}
+                        print(f"smoke popup state after {label}: {state}", flush=True)
+                    except Exception as exc:
+                        print(f"smoke popup state after {label} failed: {exc}", flush=True)
+
+                QTimer.singleShot(320, print_popup_state)
+            except Exception as exc:
+                print(f"smoke {label} open failed: {exc}", flush=True)
+
+        action_timer = QTimer(QCoreApplication.instance())
+        action_timer.setSingleShot(True)
+        action_timer.timeout.connect(trigger_action)
+        action_timer.start(action_interval)
+        _SMOKE_TIMERS.append(action_timer)
+    page_sequence = os.environ.get("QROUNDEDFRAME_SMOKE_PAGE_SEQUENCE", "").strip()
+    if page_sequence:
+        pages = [page.strip() for page in page_sequence.split(",") if page.strip()]
+        try:
+            page_start = max(0, int(os.environ.get("QROUNDEDFRAME_SMOKE_PAGE_START_MS", "2400")))
+            page_step = max(250, int(os.environ.get("QROUNDEDFRAME_SMOKE_PAGE_STEP_MS", "900")))
+        except ValueError:
+            page_start, page_step = 2400, 900
+        for index, page in enumerate(pages):
+            page_interval = min(interval - 250, page_start + index * page_step)
+            if page_interval <= 0:
+                continue
+
+            def show_page(page=page) -> None:
+                try:
+                    method = getattr(root, "smokeShowPage", None)
+                    result = method(page) if callable(method) else False
+                    print(f"smoke page show requested: {page}={result}", flush=True)
+                except Exception as exc:
+                    print(f"smoke page show failed: {page}: {exc}", flush=True)
+
+            page_timer = QTimer(QCoreApplication.instance())
+            page_timer.setSingleShot(True)
+            page_timer.timeout.connect(show_page)
+            page_timer.start(page_interval)
+            _SMOKE_TIMERS.append(page_timer)
+    profile_value = os.environ.get("QROUNDEDFRAME_SMOKE_RESOURCE_PROFILE", "").strip()
+    if profile_value:
+        try:
+            profile_interval = max(0, min(interval - 250, int(os.environ.get("QROUNDEDFRAME_SMOKE_RESOURCE_PROFILE_MS", "4200"))))
+        except ValueError:
+            profile_interval = 4200
+
+        def set_resource_profile() -> None:
+            try:
+                bridge = bridge_for_root()
+                if bridge is not None and hasattr(bridge, "performance"):
+                    bridge.performance.setResourceProfile(profile_value)
+                    print(f"smoke resource profile set: {profile_value}", flush=True)
+            except Exception as exc:
+                print(f"smoke resource profile failed: {profile_value}: {exc}", flush=True)
+
+        profile_timer = QTimer(QCoreApplication.instance())
+        profile_timer.setSingleShot(True)
+        profile_timer.timeout.connect(set_resource_profile)
+        profile_timer.start(profile_interval)
+        _SMOKE_TIMERS.append(profile_timer)
     print(f"smoke close scheduled after {interval} ms", flush=True)
 
     def close_root() -> None:
@@ -209,14 +384,10 @@ def schedule_smoke_close(root_objects) -> None:
 
 
 def should_use_qwindowkit_shell(window_policy, project_root: Path) -> bool:
-    """Return whether the top-level QML window should own the HWND.
+    """Return whether the top-level QML window should own the HWND."""
 
-    Prefer the top-level QML/QWindowKit shell whenever the native runtime is
-    available.  It keeps the window to the expected two-layer model: native
-    agent owns HWND behavior, QML owns content.  The QWidget/QQuickWidget host
-    remains a fallback only when the QWindowKit shell cannot be loaded.
-    """
-
+    if sys.platform == "win32" and os.environ.get("QROUNDEDFRAME_DISABLE_QWINDOWKIT_MAIN_SHELL", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return False
     if not native_runtime_available(project_root):
         return False
     if not window_policy.native_shell_preferred:
@@ -232,6 +403,8 @@ def run_event_loop(app, engine: QQmlApplicationEngine | None = None) -> int:
 
 
 def main() -> int:
+    install_qt_message_logging()
+    write_runtime_log("main starting")
     set_linux_process_name("QRoundedFrame")
 
     # Avoid stale compiled QML cache when users replace this template folder during development.
@@ -243,7 +416,8 @@ def main() -> int:
         # which can outlive a fast Windows shutdown path and print DXGI cleanup
         # warnings on process exit.
         os.environ.setdefault("QT_D3D_NO_VBLANK_THREAD", "1")
-    # Keep transparent rounded QML windows antialiased without allocating multisample render targets on every top-level Qt Quick scene graph.
+    # Keep transparent rounded QML windows antialiased without allocating
+    # multisample render targets on every top-level Qt Quick scene graph.
     fmt = QSurfaceFormat()
     fmt.setSamples(0)
     if sys.platform == "win32":
@@ -266,6 +440,7 @@ def main() -> int:
         app = QApplication(sys.argv)
     else:
         app = QGuiApplication(sys.argv)
+    write_runtime_log(f"application={type(app).__name__}")
 
     # Keep Qt's global pixmap cache bounded. The UI uses many small themed
     # images and generated accents; without a cap, routine interactions can
@@ -313,6 +488,10 @@ def main() -> int:
 
     bridge = AppBridge(app=app, engine=engine, qml_dir=qml_dir, parent=app, native_window_shell=use_native_child_shell)
     engine.rootContext().setContextProperty("App", bridge)
+    write_runtime_log(
+        f"policy={window_policy} native_variant={native_runtime_variant()} "
+        f"qwindowkit_shell={use_qwindowkit_shell} native_child_shell={use_native_child_shell}"
+    )
 
     if use_qwindowkit_shell:
         engine.load(QUrl.fromLocalFile(str(qml_dir / "NativeAppMain.qml")))
@@ -346,6 +525,7 @@ def main() -> int:
         schedule_smoke_close(engine.rootObjects())
 
     result = run_event_loop(app, engine)
+    write_runtime_log(f"event loop returned {result}")
     if os.environ.get("QROUNDEDFRAME_SMOKE_CLOSE_MS", "").strip():
         print(f"smoke main returning {result}", flush=True)
     return result

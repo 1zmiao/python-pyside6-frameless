@@ -5,6 +5,8 @@
 #include <QtQml/qqmlregistration.h>
 #include <QtQuick/QQuickItem>
 
+class QQuickWindow;
+
 class NativeInlineDragArea : public QQuickItem {
     Q_OBJECT
     QML_ELEMENT
@@ -15,6 +17,7 @@ class NativeInlineDragArea : public QQuickItem {
 
 public:
     explicit NativeInlineDragArea(QQuickItem *parent = nullptr);
+    ~NativeInlineDragArea() override;
 
     QQuickItem *target() const;
     void setTarget(QQuickItem *value);
@@ -45,19 +48,22 @@ protected:
     void mouseUngrabEvent() override;
 
 private:
+    void setObservedWindow(QQuickWindow *window);
+    QPointF itemPointFromScene(const QPointF &scenePoint) const;
     QQuickItem *topWindowAt(const QPointF &point) const;
-    void beginMove(QQuickItem *target, const QPointF &scenePoint, const QPointF &globalPoint);
-    void updateMove(const QPointF &globalPoint);
+    QQuickItem *pressTargetAt(const QPointF &scenePoint) const;
+    QPointF parentPointFromScene(const QPointF &scenePoint) const;
+    void beginMove(QQuickItem *target, const QPointF &scenePoint);
+    void updateMove(const QPointF &scenePoint);
     void finishMoveFromRelease(QMouseEvent *event);
     void endMove(bool releaseGrab = true);
 
     QPointer<QQuickItem> m_configuredTarget;
     QPointer<QQuickItem> m_target;
-    QPointF m_anchor;
-    QPointF m_pressGlobal;
+    QPointer<QQuickWindow> m_observedWindow;
+    QPointF m_pressParentPoint;
     QPointF m_startPosition;
     bool m_moved = false;
-    bool m_filterInstalled = false;
     qreal m_titleBarHeight = 36.0;
     qreal m_controlsReserve = 70.0;
     qreal m_edgeResizeReserve = 8.0;

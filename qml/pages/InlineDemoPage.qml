@@ -56,8 +56,8 @@ Item {
                 Flow {
                     width: parent.width
                     spacing: Core.Theme.dp(8)
-                    AppButton { text: "打开关于页内窗"; variant: "soft"; onClicked: Core.InlineWindowBus.openInline("about", ({})) }
-                    AppButton { text: "打开独立关于窗"; variant: "soft"; onClicked: Core.InlineWindowBus.openNative("about", ({})) }
+                    AppButton { text: "打开关于页内窗"; variant: "soft"; onClicked: App.requestOpenChild("about", "inline", ({})) }
+                    AppButton { text: "打开独立关于窗"; variant: "soft"; onClicked: App.requestOpenChild("about", "native", ({})) }
                 }
             }
         }

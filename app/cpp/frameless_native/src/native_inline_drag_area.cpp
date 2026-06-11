@@ -40,6 +40,12 @@ NativeInlineDragArea::NativeInlineDragArea(QQuickItem *parent)
     : QQuickItem(parent) {
     setAcceptedMouseButtons(Qt::LeftButton);
     setFlag(QQuickItem::ItemHasContents, false);
+    connect(this, &QQuickItem::windowChanged, this, &NativeInlineDragArea::setObservedWindow);
+}
+
+NativeInlineDragArea::~NativeInlineDragArea() {
+    if (m_observedWindow)
+        m_observedWindow->removeEventFilter(this);
 }
 
 QQuickItem *NativeInlineDragArea::target() const {
@@ -134,7 +140,46 @@ QQuickItem *NativeInlineDragArea::topWindowAt(const QPointF &point) const {
     return top;
 }
 
-void NativeInlineDragArea::beginMove(QQuickItem *target, const QPointF &, const QPointF &globalPoint) {
+void NativeInlineDragArea::setObservedWindow(QQuickWindow *window) {
+    if (m_observedWindow == window)
+        return;
+    if (m_observedWindow)
+        m_observedWindow->removeEventFilter(this);
+    m_observedWindow = window;
+    if (m_observedWindow)
+        m_observedWindow->installEventFilter(this);
+}
+
+QPointF NativeInlineDragArea::itemPointFromScene(const QPointF &scenePoint) const {
+    auto *content = window() ? window()->contentItem() : nullptr;
+    if (!content)
+        return scenePoint;
+    return content->mapToItem(const_cast<NativeInlineDragArea *>(this), scenePoint);
+}
+
+QQuickItem *NativeInlineDragArea::pressTargetAt(const QPointF &scenePoint) const {
+    if (m_configuredTarget) {
+        const QPointF localPoint = itemPointFromScene(scenePoint);
+        if (localPoint.x() < 0 || localPoint.x() > width())
+            return nullptr;
+        if (localPoint.y() < 0 || localPoint.y() > height())
+            return nullptr;
+        return m_configuredTarget.data();
+    }
+    return topWindowAt(itemPointFromScene(scenePoint));
+}
+
+QPointF NativeInlineDragArea::parentPointFromScene(const QPointF &scenePoint) const {
+    if (!m_target)
+        return scenePoint;
+    auto *parent = m_target->parentItem();
+    auto *content = window() ? window()->contentItem() : nullptr;
+    if (!parent || !content)
+        return scenePoint;
+    return content->mapToItem(parent, scenePoint);
+}
+
+void NativeInlineDragArea::beginMove(QQuickItem *target, const QPointF &scenePoint) {
     if (!target)
         return;
     auto *targetParent = target->parentItem();
@@ -152,34 +197,21 @@ void NativeInlineDragArea::beginMove(QQuickItem *target, const QPointF &, const 
         }
     }
     m_target = target;
-    m_pressGlobal = globalPoint;
+    m_pressParentPoint = parentPointFromScene(scenePoint);
     m_startPosition = QPointF(target->x(), target->y());
     m_moved = false;
     target->setProperty("moving", true);
     emit dragStarted();
-    if (auto *w = window()) {
-        w->installEventFilter(this);
-        m_filterInstalled = true;
-    }
-    setKeepMouseGrab(true);
-    grabMouse();
 }
 
 void NativeInlineDragArea::endMove(bool releaseGrab) {
-    if (m_filterInstalled) {
-        if (auto *w = window())
-            w->removeEventFilter(this);
-        m_filterInstalled = false;
-    }
     if (m_target)
         m_target->setProperty("moving", false);
     m_target.clear();
-    setKeepMouseGrab(false);
-    if (releaseGrab)
-        ungrabMouse();
+    Q_UNUSED(releaseGrab);
 }
 
-void NativeInlineDragArea::updateMove(const QPointF &globalPoint) {
+void NativeInlineDragArea::updateMove(const QPointF &scenePoint) {
     if (!m_target)
         return;
     auto *parent = m_target->parentItem();
@@ -187,9 +219,8 @@ void NativeInlineDragArea::updateMove(const QPointF &globalPoint) {
         endMove();
         return;
     }
-    const QPointF globalDelta = globalPoint - m_pressGlobal;
-    if (!m_moved && (qAbs(globalDelta.x()) + qAbs(globalDelta.y())) < 3.0)
-        return;
+    const QPointF parentPoint = parentPointFromScene(scenePoint);
+    const QPointF globalDelta = parentPoint - m_pressParentPoint;
     m_moved = true;
     m_target->setX(snapToPhysicalPixel(m_startPosition.x() + globalDelta.x(), window()));
     m_target->setY(snapToPhysicalPixel(m_startPosition.y() + globalDelta.y(), window()));
@@ -210,22 +241,39 @@ void NativeInlineDragArea::finishMoveFromRelease(QMouseEvent *event) {
 }
 
 bool NativeInlineDragArea::eventFilter(QObject *watched, QEvent *event) {
-    if (!m_target || watched != window())
+    if (!m_observedWindow || watched != m_observedWindow || !isVisible())
         return QQuickItem::eventFilter(watched, event);
 
     switch (event->type()) {
+    case QEvent::MouseButtonPress: {
+        auto *mouse = static_cast<QMouseEvent *>(event);
+        if (mouse->button() != Qt::LeftButton)
+            break;
+        if (m_target)
+            break;
+        auto *target = pressTargetAt(mouse->scenePosition());
+        if (!target)
+            break;
+        beginMove(target, mouse->scenePosition());
+        mouse->accept();
+        return true;
+    }
     case QEvent::MouseMove: {
+        if (!m_target)
+            break;
         auto *mouse = static_cast<QMouseEvent *>(event);
         if (!(mouse->buttons() & Qt::LeftButton) || !isLeftButtonPhysicallyDown()) {
             endMove();
             mouse->accept();
             return true;
         }
-        updateMove(mouse->globalPosition());
+        updateMove(mouse->scenePosition());
         mouse->accept();
         return true;
     }
     case QEvent::MouseButtonRelease: {
+        if (!m_target)
+            break;
         auto *mouse = static_cast<QMouseEvent *>(event);
         if (mouse->button() == Qt::LeftButton) {
             finishMoveFromRelease(mouse);
@@ -253,7 +301,7 @@ void NativeInlineDragArea::mousePressEvent(QMouseEvent *event) {
         event->ignore();
         return;
     }
-    beginMove(target, event->scenePosition(), event->globalPosition());
+    beginMove(target, event->scenePosition());
     event->accept();
 }
 
@@ -268,7 +316,7 @@ void NativeInlineDragArea::mouseMoveEvent(QMouseEvent *event) {
         event->accept();
         return;
     }
-    updateMove(event->globalPosition());
+    updateMove(event->scenePosition());
     event->accept();
 }
 

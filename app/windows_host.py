@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import ctypes
+import os
 import sys
 from ctypes import wintypes
 from pathlib import Path
 
 from PySide6.QtCore import QObject, Property, QRect, Qt, QTimer, QUrl, Signal, Slot, QPropertyAnimation
-from PySide6.QtGui import QColor, QGuiApplication, QSurfaceFormat, QCursor, QPainterPath, QRegion, QPalette
+from PySide6.QtGui import QColor, QGuiApplication, QSurfaceFormat, QCursor, QPainterPath, QRegion, QPalette, QPainter
 from PySide6.QtQuickWidgets import QQuickWidget
-from PySide6.QtWidgets import QVBoxLayout, QWidget, QApplication
+from PySide6.QtWidgets import QWidget, QApplication
 
+from .runtime_logging import write_runtime_log
 from .windows_compat import is_windows_11_or_newer, use_custom_window_shadow
 
 
@@ -77,6 +79,54 @@ else:
     MSG = None
 
 
+class _QuickContentHost:
+    def __init__(self, owner: QWidget, engine, qml_dir: Path, bridge, clear_color: QColor) -> None:
+        self._source_loaded = False
+        widget = QQuickWidget(engine, owner)
+        widget.setResizeMode(QQuickWidget.ResizeMode.SizeRootObjectToView)
+        widget.setClearColor(clear_color)
+        widget.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        widget.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, False)
+        widget.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        widget.setAutoFillBackground(True)
+        widget.engine().addImportPath(str(qml_dir))
+        widget.rootContext().setContextProperty("NativeHost", owner)
+        widget.rootContext().setContextProperty("App", bridge)
+        self.widget = widget
+
+    def setSource(self, url: QUrl) -> None:
+        if self._source_loaded:
+            return
+        self.widget.setSource(url)
+        self._source_loaded = True
+
+    def rootObject(self):
+        return self.widget.rootObject()
+
+    def setClearColor(self, color: QColor) -> None:
+        self.widget.setClearColor(color)
+
+    def setPaletteColor(self, color: QColor) -> None:
+        try:
+            palette = self.widget.palette()
+            palette.setColor(QPalette.ColorRole.Window, color)
+            self.widget.setPalette(palette)
+        except Exception:
+            pass
+
+    def update(self) -> None:
+        self.widget.update()
+
+    def geometry(self) -> QRect:
+        return self.widget.geometry()
+
+    def setGeometry(self, rect: QRect) -> None:
+        self.widget.setGeometry(rect)
+
+    def width(self) -> int:
+        return int(self.widget.width())
+
+
 class NativeFramelessHost(QWidget):
     """Windows-only native frameless host for the QML scene.
 
@@ -91,6 +141,7 @@ class NativeFramelessHost(QWidget):
     alwaysOnTopChanged = Signal(bool)
     toastRequested = Signal(str)
     snapPreviewChanged = Signal(str, int, int, int, int, bool)
+    nativeShown = Signal()
 
     def __init__(
         self,
@@ -144,11 +195,12 @@ class NativeFramelessHost(QWidget):
         self.setProperty("windowKey", self._window_key)
         self.setProperty("pageSource", self._page_source)
         self.setProperty("pageTitle", self._page_title)
-        self.setWindowTitle(self._title)
         self._custom_shadow_enabled = use_custom_window_shadow()
         self._last_shadow_inset = 0
         self._corner_radius = 0
         self._native_widget_agent_ready = False
+        self._native_size_move_active = False
+        self._live_resize_guard_px = max(0, min(16, int(os.environ.get("QROUNDEDFRAME_LIVE_RESIZE_GUARD_PX", "0") or "0")))
         self._shell_background_color = self._initial_shell_background_color()
         self._shell_background_animation = QPropertyAnimation(self, b"animatedShellBackground", self)
         self._shell_background_animation.setDuration(180)
@@ -166,21 +218,24 @@ class NativeFramelessHost(QWidget):
             self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
         self.setAutoFillBackground(True)
 
-        self._quick = QQuickWidget(self._engine, self)
-        self._quick.setResizeMode(QQuickWidget.ResizeMode.SizeRootObjectToView)
-        self._quick.setClearColor(self._shell_background_color)
-        self._quick.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
-        self._quick.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, False)
-        self._quick.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
-        self._quick.setAutoFillBackground(True)
-        self._quick.engine().addImportPath(str(self._qml_dir))
-        self._quick.rootContext().setContextProperty("NativeHost", self)
-        self._quick.rootContext().setContextProperty("App", bridge)
+        self._backing = QWidget(self)
+        self._backing.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, False)
+        self._backing.setAttribute(Qt.WidgetAttribute.WA_NoSystemBackground, False)
+        self._backing.setAttribute(Qt.WidgetAttribute.WA_OpaquePaintEvent, True)
+        self._backing.setAutoFillBackground(True)
+        self._set_widget_palette_color(self._backing, self._shell_background_color)
+        self._backing.lower()
 
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(0)
-        layout.addWidget(self._quick)
+        source_url = QUrl.fromLocalFile(str(self._qml_dir / self._source_file))
+        write_runtime_log("NativeFramelessHost content_host=QQuickWidget")
+        self._quick_host = _QuickContentHost(
+            self,
+            self._engine,
+            self._qml_dir,
+            bridge,
+            self._shell_background_color,
+        )
+        self._quick = self._quick_host.widget
 
         self._move_timer = QTimer(self)
         self._move_timer.setInterval(12)
@@ -191,20 +246,39 @@ class NativeFramelessHost(QWidget):
             pass
 
         self._restore_geometry_from_settings()
-        source_url = QUrl.fromLocalFile(str(self._qml_dir / self._source_file))
-        self._quick.setSource(source_url)
+        self._quick_host.setSource(source_url)
+        self.setWindowTitle(self._title)
 
     def _sync_quick_geometry(self) -> None:
         try:
-            target = self.rect()
-            if self._quick.geometry() != target:
-                self._quick.setGeometry(target)
+            guard = self._quick_resize_guard()
+            backing_target = self.rect()
+            if self._backing.geometry() != backing_target:
+                self._backing.setGeometry(backing_target)
+            self._backing.lower()
+            target = backing_target.adjusted(0, 0, -guard, -guard)
+            if self._quick_host.geometry() != target:
+                self._quick_host.setGeometry(target)
+        except Exception:
+            pass
+
+    def _quick_resize_guard(self) -> int:
+        if sys.platform != "win32" or not self._native_size_move_active:
+            return 0
+        return int(self._live_resize_guard_px)
+
+    def _apply_quick_resize_guard(self) -> None:
+        try:
+            self._sync_quick_geometry()
+            self.update()
+            self._quick_host.update()
         except Exception:
             pass
 
     def _request_quick_repaint(self) -> None:
         try:
-            self._quick.update()
+            self._backing.update()
+            self._quick_host.update()
             self.update()
         except Exception:
             pass
@@ -249,23 +323,35 @@ class NativeFramelessHost(QWidget):
             return
         self._shell_background_color = QColor(qcolor)
         try:
-            self._quick.setClearColor(self._shell_background_color)
-            quick_palette = self._quick.palette()
-            quick_palette.setColor(QPalette.ColorRole.Window, self._shell_background_color)
-            self._quick.setPalette(quick_palette)
-            self._quick.update()
+            self._quick_host.setClearColor(self._shell_background_color)
+            self._quick_host.setPaletteColor(self._shell_background_color)
+            self._quick_host.update()
         except Exception:
             pass
         try:
-            palette = self.palette()
-            palette.setColor(QPalette.ColorRole.Window, self._shell_background_color)
-            self.setPalette(palette)
+            self._set_widget_palette_color(self, self._shell_background_color)
+            self._set_widget_palette_color(self._backing, self._shell_background_color)
         except Exception:
             pass
         try:
+            self._backing.update()
             self.update()
         except Exception:
             pass
+
+    def _set_widget_palette_color(self, widget: QWidget, color: QColor) -> None:
+        palette = widget.palette()
+        palette.setColor(QPalette.ColorRole.Window, color)
+        widget.setPalette(palette)
+
+    def paintEvent(self, event):  # noqa: N802
+        try:
+            painter = QPainter(self)
+            painter.fillRect(self.rect(), self._shell_background_color)
+            painter.end()
+        except Exception:
+            pass
+        return super().paintEvent(event)
 
     def _get_animated_shell_background(self) -> QColor:
         return QColor(self._shell_background_color)
@@ -287,6 +373,14 @@ class NativeFramelessHost(QWidget):
     @Slot()
     def syncQuickGeometry(self) -> None:
         self._sync_quick_geometry()
+
+    @Slot(bool)
+    def setNativeSizeMoveActive(self, active: bool) -> None:
+        active = bool(active)
+        if self._native_size_move_active == active:
+            return
+        self._native_size_move_active = active
+        self._apply_quick_resize_guard()
 
     @Slot()
     def handleNativeMoving(self) -> None:
@@ -398,7 +492,7 @@ class NativeFramelessHost(QWidget):
 
     def _native_widget_agent(self):
         try:
-            root = self._quick.rootObject()
+            root = self._quick_host.rootObject()
             if root is None:
                 return None
             agent = root.property("nativeWidgetAgent")
@@ -779,6 +873,10 @@ class NativeFramelessHost(QWidget):
                 self._bridge.dialogs.shutdown()
             except Exception:
                 pass
+            if self._use_windows_fast_exit():
+                write_runtime_log("NativeFramelessHost.closeWindow using AppBridge fast exit")
+                self._bridge.exitApplication()
+                return
         self.close()
 
     def markDialogServiceClosing(self) -> None:
@@ -888,20 +986,20 @@ class NativeFramelessHost(QWidget):
     def moveEvent(self, event):  # noqa: N802
         if self._should_store_as_normal_geometry():
             self._store_normal_geometry(QRect(self.geometry()))
+        result = super().moveEvent(event)
+        self._request_quick_repaint()
         self.maximizedChanged.emit()
         self.geometryChanged.emit()
-        self._request_quick_repaint()
-        return super().moveEvent(event)
+        return result
 
     def resizeEvent(self, event):  # noqa: N802
-        self._sync_quick_geometry()
         if self._should_store_as_normal_geometry():
             self._store_normal_geometry(QRect(self.geometry()))
-        self.maximizedChanged.emit()
-        self.geometryChanged.emit()
         result = super().resizeEvent(event)
         self._sync_quick_geometry()
         self._apply_widget_mask()
+        self.maximizedChanged.emit()
+        self.geometryChanged.emit()
         return result
 
     def changeEvent(self, event):  # noqa: N802
@@ -913,6 +1011,23 @@ class NativeFramelessHost(QWidget):
         self.activeChanged.emit()
 
     def closeEvent(self, event):  # noqa: N802
+        if self._is_main_window:
+            if self._close_to_tray:
+                try:
+                    if self._bridge.tray.handleClosing(self):
+                        write_runtime_log("NativeFramelessHost.closeEvent handled by tray")
+                        event.ignore()
+                        return
+                except Exception:
+                    pass
+            if self._use_windows_fast_exit():
+                write_runtime_log("NativeFramelessHost.closeEvent using AppBridge fast exit")
+                event.ignore()
+                try:
+                    self._bridge.exitApplication()
+                except Exception:
+                    pass
+                return
         self._save_normal_geometry()
         self._save_geometry_to_settings()
         if self._is_main_window:
@@ -922,7 +1037,7 @@ class NativeFramelessHost(QWidget):
                 pass
         else:
             try:
-                root = self._quick.rootObject()
+                root = self._quick_host.rootObject()
                 if root is not None and hasattr(root, "cleanupExternalShadow"):
                     root.cleanupExternalShadow()
             except Exception:
@@ -932,6 +1047,12 @@ class NativeFramelessHost(QWidget):
             QTimer.singleShot(0, self._app.quit)
         return result
 
+    def _use_windows_fast_exit(self) -> bool:
+        return (
+            sys.platform == "win32"
+            and os.environ.get("QROUNDEDFRAME_DISABLE_FAST_EXIT", "").strip().lower() not in {"1", "true", "yes"}
+        )
+
     def showEvent(self, event):  # noqa: N802
         super().showEvent(event)
         self._apply_windows_chrome()
@@ -939,6 +1060,8 @@ class NativeFramelessHost(QWidget):
         self._sync_quick_geometry()
         self.maximizedChanged.emit()
         self.activeChanged.emit()
+        self.geometryChanged.emit()
+        self.nativeShown.emit()
 
     def nativeEvent(self, event_type, message):  # noqa: N802
         if sys.platform != "win32" or MSG is None:
@@ -949,8 +1072,6 @@ class NativeFramelessHost(QWidget):
             msg = MSG.from_address(int(message))
         except Exception:
             return False, 0
-        if msg.message in (WM_SIZING, WM_WINDOWPOSCHANGING):
-            self._sync_quick_geometry()
         if msg.message == WM_MOVING:
             if self._move_state and bool(self._move_state.get("system_move", False)):
                 self._update_snap_preview()
@@ -969,7 +1090,7 @@ class NativeFramelessHost(QWidget):
             return 0
         inset = 0
         try:
-            root = self._quick.rootObject()
+            root = self._quick_host.rootObject()
             if root is not None:
                 if bool(root.property("nativeExternalShadow")):
                     self._last_shadow_inset = 0
@@ -987,7 +1108,7 @@ class NativeFramelessHost(QWidget):
         if not self._custom_shadow_enabled:
             return 0
         try:
-            root = self._quick.rootObject()
+            root = self._quick_host.rootObject()
             if root is not None:
                 if bool(root.property("nativeExternalShadow")):
                     self._last_shadow_inset = 0
@@ -1071,6 +1192,9 @@ class NativeFramelessHost(QWidget):
 
     def _apply_widget_mask(self) -> None:
         try:
+            if self._native_widget_agent_ready:
+                self.clearMask()
+                return
             if self.isMaximized() or self.isFullScreen() or self._is_snap_geometry() or self._corner_radius <= 0:
                 self.clearMask()
                 return
@@ -1465,7 +1589,7 @@ class NativeFramelessHost(QWidget):
 
     def _set_native_drag_restore_visual(self, enabled: bool) -> None:
         try:
-            root = self._quick.rootObject()
+            root = self._quick_host.rootObject()
             if root is not None:
                 root.setProperty("nativeDragRestoreVisual", bool(enabled) and bool(self._custom_shadow_enabled))
         except Exception:
@@ -1475,7 +1599,7 @@ class NativeFramelessHost(QWidget):
         normal_inset = int(self._normal_shadow_inset())
         if current_content_width is None:
             current_inset = int(self._shadow_inset())
-            current_content_width = float((self._quick.width() or self.geometry().width()) - current_inset * 2)
+            current_content_width = float((self._quick_host.width() or self.geometry().width()) - current_inset * 2)
         current_width = max(1.0, float(current_content_width))
         normal_width = max(1.0, float(int(normal.width()) - normal_inset * 2))
         ratio_x = 0.5
@@ -1584,7 +1708,7 @@ class NativeFramelessHost(QWidget):
         try:
             cursor = QCursor.pos()
             start_inset = int(self._shadow_inset())
-            start_content_width = max(1.0, float((self._quick.width() or self.geometry().width()) - start_inset * 2))
+            start_content_width = max(1.0, float((self._quick_host.width() or self.geometry().width()) - start_inset * 2))
             self._move_state = {
                 "manual_restore": True,
                 "manual_restore_pending": True,

@@ -17,12 +17,23 @@ Item {
         return null
     }
 
-    ConfirmDialog {
-        id: demoDialog
-        parent: root.Window.window ? root.Window.window.contentItem : root
-        dialogTitle: "确认操作"
-        message: "这是一个跟随主题、圆角和按钮样式的轻量确认弹窗，不单独创建顶层窗口。"
-        onConfirmed: storageText.text = "弹窗确认时间：" + new Date().toString()
+    Loader {
+        id: demoDialogLoader
+        active: false
+        sourceComponent: ConfirmDialog {
+            parent: root.Window.window ? root.Window.window.contentItem : root
+            dialogTitle: "确认操作"
+            message: "这是一个跟随主题、圆角和按钮样式的轻量确认弹窗，不单独创建顶层窗口。"
+            onConfirmed: storageText.text = "弹窗确认时间：" + new Date().toString()
+        }
+    }
+
+    function openDemoDialog() {
+        demoDialogLoader.active = true
+        Qt.callLater(function() {
+            if (demoDialogLoader.item)
+                demoDialogLoader.item.openCentered(root.Window.window ? root.Window.window.contentItem : root)
+        })
     }
 
     DragScrollArea {
@@ -129,7 +140,7 @@ Item {
                         variant: "primary"
                         text: "显示确认弹窗"
                         minButtonWidth: Core.Theme.dp(128)
-                        onClicked: demoDialog.openCentered(root.Window.window ? root.Window.window.contentItem : root)
+                        onClicked: root.openDemoDialog()
                     }
                 }
             }

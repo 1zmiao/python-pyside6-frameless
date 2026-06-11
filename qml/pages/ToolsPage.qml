@@ -48,8 +48,8 @@ Item {
                     width: parent.width
                     spacing: Core.Theme.dp(8)
                     AppButton { text: "工具操作"; variant: "primary" }
-                    AppButton { text: "打开页内子窗口"; variant: "soft"; onClicked: Core.InlineWindowBus.openInline("inline-demo", ({})) }
-                    AppButton { text: "打开关于子窗口"; onClicked: Core.InlineWindowBus.openNative("about", ({})) }
+                    AppButton { text: "打开页内子窗口"; variant: "soft"; onClicked: App.requestOpenChild("inline-demo", "inline", ({})) }
+                    AppButton { text: "打开关于子窗口"; onClicked: App.requestOpenChild("about", "native", ({})) }
                 }
             }
         }

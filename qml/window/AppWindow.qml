@@ -30,6 +30,8 @@ Window {
     property bool snappedVisual: false
     property bool nativeChromeRegistered: false
     property bool windowMaximized: false
+    property bool destroyOnChildClose: false
+    property bool _destroyingChildWindow: false
     property string effectiveShadowPolicy: shadowPolicy === "auto"
                                            && root.bridge && root.bridge.window
                                            && root.bridge.window.windowShadowPolicy !== undefined
@@ -93,10 +95,6 @@ Window {
     visible: false
 
     Component.onCompleted: {
-        if (root.windowKey.indexOf("child-") === 0) {
-            root.persistentSceneGraph = false
-            root.persistentGraphics = false
-        }
         root.registerNativeChrome()
         if (root.autoRestoreWindowState)
             root.restorePersistedWindowState()
@@ -187,19 +185,32 @@ Window {
         } catch (e2) {}
     }
 
+    function fadeOutExternalShadow() {
+        if (!root.nativeExternalShadow || !externalShadow || !externalShadow.fadeOutNativeShadow)
+            return
+        externalShadow.fadeOutNativeShadow(root)
+    }
+
     function finalizeChildClose() {
         if (root._childCloseScheduled)
             return
         root._childCloseScheduled = true
         Qt.callLater(function() {
+            root._destroyingChildWindow = true
+            stableNativeShadowSyncTimer.stop()
+            snapStateSyncTimer.stop()
+            resizeTrimTimer.stop()
             if (root.bridge && root.bridge.window && root.bridge.window.saveNativeManagedWindowState)
                 root.bridge.window.saveNativeManagedWindowState(root)
             root.visible = false
-            root.releaseResources()
             root.cleanupExternalShadow()
             if (root.releaseContent)
                 root.releaseContent()
-            root.windowEvent("closing", ({}))
+            if (root.destroyOnChildClose && nativeAgent.teardown)
+                nativeAgent.teardown()
+            else
+                root.releaseResources()
+            root.windowEvent("closing", ({ "destroy": root.destroyOnChildClose }))
         })
     }
 
@@ -211,6 +222,8 @@ Window {
         root.close()
     }
     function syncExternalShadow() {
+        if (root._destroyingChildWindow)
+            return
         if (!externalShadow || !externalShadow.setNativeShadow)
             return
         if (root.nativeExternalShadow) {
@@ -225,6 +238,8 @@ Window {
     }
 
     function scheduleNativeShadowShow() {
+        if (root._destroyingChildWindow)
+            return
         root.syncExternalShadow()
         stableNativeShadowSyncTimer.restart()
         Qt.callLater(function() {
@@ -234,12 +249,16 @@ Window {
         })
     }
     function markNativeShadowDisplayReady() {
+        if (root._destroyingChildWindow)
+            return
         if (!root.visible || root.nativeShadowDisplayReady)
             return
         root.nativeShadowDisplayReady = true
         root.scheduleNativeShadowShow()
     }
     function syncNativeWindowState() {
+        if (root._destroyingChildWindow)
+            return
         root.windowMaximized = root.visibility === Window.Maximized
                                || root.visibility === Window.FullScreen
                                || nativeAgent.isMaximized(root)
@@ -250,6 +269,17 @@ Window {
     }
 
     function toggleMaximized() {
+        const wasMaximized = root.visibility === Window.Maximized
+                             || root.visibility === Window.FullScreen
+                             || nativeAgent.isMaximized(root)
+        const wasSnapped = root.bridge && root.bridge.window && root.bridge.window.isSnappedState
+                           ? root.bridge.window.isSnappedState(root)
+                           : externalShadow.isSnapped(root)
+        if (!wasMaximized && !wasSnapped)
+            root.fadeOutExternalShadow()
+        root.windowMaximized = !wasMaximized
+        root.nativeShadowDisplayReady = wasSnapped || !root.windowMaximized
+        nativeAgent.setCornerRadius(root.cornerRadius)
         nativeAgent.toggleMaximized(root)
     }
 
@@ -292,6 +322,24 @@ Window {
             root.bridge.theme.decreaseFontScale()
     }
 
+    function smokeOpenTitleMenu() {
+        return titleBarControl.smokeOpenFirstMenu()
+    }
+
+    function smokeOpenPalette() {
+        return titleBarControl.smokeOpenPalette()
+    }
+
+    function smokePopupState() {
+        return titleBarControl.smokePopupState()
+    }
+
+    function smokeShowPage(pageKey) {
+        if (contentHost.children.length <= 0 || !contentHost.children[0].smokeShowPage)
+            return false
+        return contentHost.children[0].smokeShowPage(pageKey)
+    }
+
     function restorePersistedWindowState() {
         if (root.bridge && root.bridge.window && root.bridge.window.restoreNativeManagedWindowState)
             root.bridge.window.restoreNativeManagedWindowState(root)
@@ -322,7 +370,7 @@ Window {
         Rectangle {
             id: background
             anchors.fill: parent
-            radius: root.cornerRadius
+            radius: frameRoot.visualRadius
             antialiasing: true
             color: Core.Theme.color.surface
             border.color: "transparent"
@@ -337,7 +385,8 @@ Window {
             z: 1
             active: false
             sourceComponent: ThemeTransitionLayer {
-                radius: root.cornerRadius
+                radius: frameRoot.visualRadius
+                renderScale: Core.Theme.lowMemoryMode ? 0.15 : 0.35
                 onFinished: {
                     transitionLayerLoader.active = false
                     if (root.windowKey === "main" && root.bridge && root.bridge.trimMemoryNow)
@@ -423,11 +472,11 @@ Window {
             anchors.fill: parent
             anchors.margins: root.stableHairline
             z: 90
-            radius: Math.max(0, root.cornerRadius - root.stableHairline)
+            radius: Math.max(0, frameRoot.visualRadius - root.stableHairline)
             color: "transparent"
-            visible: root.cornerRadius > 0
-            border.color: root.cornerRadius > 0 ? Core.Theme.color.windowEdge : "transparent"
-            border.width: root.cornerRadius > 0 ? root.stableHairline : 0
+            visible: frameRoot.visualRadius > 0
+            border.color: frameRoot.visualRadius > 0 ? Core.Theme.color.windowEdge : "transparent"
+            border.width: frameRoot.visualRadius > 0 ? root.stableHairline : 0
             antialiasing: true
         }
 
@@ -473,7 +522,9 @@ Window {
         interval: 1000
         repeat: false
         onTriggered: {
-            if (root.windowKey === "main" && root.bridge && root.bridge.trimMemory)
+            if (root.windowKey === "main" && root.bridge && root.bridge.trimResizeMemory)
+                root.bridge.trimResizeMemory()
+            else if (root.windowKey === "main" && root.bridge && root.bridge.trimMemory)
                 root.bridge.trimMemory()
         }
     }
@@ -519,6 +570,8 @@ Window {
         root.scheduleNativeShadowShow()
     }
     onVisibleChanged: {
+        if (root._destroyingChildWindow)
+            return
         if (!root.visible)
             root.nativeShadowDisplayReady = false
         root.scheduleNativeShadowShow()

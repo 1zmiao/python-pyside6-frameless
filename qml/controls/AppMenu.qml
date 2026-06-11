@@ -24,18 +24,18 @@ Popup {
             root._closedActionName = root.actionName
         }
         root._suppressCloseStamp = false
-        if (typeof App !== "undefined" && App && App.trimMemory)
-            Qt.callLater(App.trimMemory)
+        if (typeof App !== "undefined" && App) {
+            if (App.logMemorySample)
+                App.logMemorySample("title_menu_closed")
+            if (App.trimMemory)
+                Qt.callLater(App.trimMemory)
+        }
     }
 
     function isAboutMenu() { return actionName === "about" }
 
     function actionTitle(action) {
-        if (action === "settings") return "设置"
-        if (action === "tools") return "工具"
-        if (action === "update") return "更新"
-        if (action === "about") return "关于"
-        return action
+        return Core.AppInfo.pageTitle(action)
     }
 
     background: Item {
@@ -49,7 +49,7 @@ Popup {
             anchors.fill: parent
             radius: Core.Theme.radius.popup
             color: Core.Theme.color.card
-            border.color: Core.Theme.color.outlineAccent
+            border.color: Core.Theme.mode === "dark" ? Core.Theme.alpha(Qt.lighter(Core.Theme.primary, 1.65), 0.88) : Core.Theme.color.outlineAccent
             border.width: 1
         }
     }
@@ -64,7 +64,7 @@ Popup {
             leftPadding: Core.Theme.dp(8)
             topPadding: Core.Theme.dp(2)
             bottomPadding: Core.Theme.dp(4)
-            text: root.isAboutMenu() ? "关于" : root.actionTitle(root.actionName)
+            text: root.actionTitle(root.actionName)
             color: Core.Theme.color.mutedText
             font.pixelSize: Core.Theme.fontSize.small
             font.bold: true

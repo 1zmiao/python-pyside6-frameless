@@ -9,8 +9,8 @@ import "controls"
 
 Item {
     id: root
-    width: 936
-    height: 749
+    implicitWidth: 936
+    implicitHeight: 749
 
     readonly property real devicePixelRatio: Math.max(1.0, (root.Window.window && root.Window.window.screen) ? root.Window.window.screen.devicePixelRatio : Screen.devicePixelRatio)
     readonly property real physicalPixel: 1.0 / devicePixelRatio
@@ -39,6 +39,7 @@ Item {
     property color displaySurfaceColor: Core.Theme.color.surface
     property color displaySurfaceBorderColor: Core.Theme.color.outline
     property bool hostShellBackgroundAnimating: false
+    property bool nativeSizeMoveActive: false
     property string pendingInlinePageKey: ""
     property var pendingInlineProps: ({})
     property alias nativeWidgetAgent: nativeWidgetHostAgent
@@ -113,22 +114,25 @@ Item {
                 NativeHost.refreshWindowsChrome()
         }
         onSizingOrPositionChanging: {
-            if (typeof NativeHost !== "undefined" && NativeHost && NativeHost.syncQuickGeometry)
-                NativeHost.syncQuickGeometry()
+            // 不要在这里反向调用 Python 去同步 QML 几何。
+            // Win32 缩放消息尚未提交时抢跑会放大左上角缩放的右下边界牵引。
             root.syncNativeState()
-            root.syncExternalShadow(false)
         }
         onMoving: {
             if (typeof NativeHost !== "undefined" && NativeHost && NativeHost.handleNativeMoving)
                 NativeHost.handleNativeMoving()
             root.syncNativeState()
-            root.syncExternalShadow(false)
         }
         onNativeSizeMoveStarted: {
+            root.nativeSizeMoveActive = true
+            if (typeof NativeHost !== "undefined" && NativeHost && NativeHost.setNativeSizeMoveActive)
+                NativeHost.setNativeSizeMoveActive(true)
             root.syncNativeState()
-            root.syncExternalShadow(false)
         }
         onNativeSizeMoveFinished: {
+            root.nativeSizeMoveActive = false
+            if (typeof NativeHost !== "undefined" && NativeHost && NativeHost.setNativeSizeMoveActive)
+                NativeHost.setNativeSizeMoveActive(false)
             root.syncNativeState()
             root.syncExternalShadow(true)
         }
@@ -137,7 +141,6 @@ Item {
             if (typeof NativeHost !== "undefined" && NativeHost && NativeHost.handleNativeWindowPosChanged)
                 NativeHost.handleNativeWindowPosChanged()
             root.syncNativeState()
-            root.syncExternalShadow(false)
         }
     }
 
@@ -256,6 +259,15 @@ Item {
         externalShadow.destroyNativeShadowForHwnd(hwnd)
     }
 
+    function fadeOutExternalShadow() {
+        if (!externalShadow || !externalShadow.fadeOutNativeShadowForHwnd)
+            return
+        const hwnd = root.nativeHwndText()
+        if (hwnd.length <= 0)
+            return
+        externalShadow.fadeOutNativeShadowForHwnd(hwnd)
+    }
+
     function syncExternalShadow(forceRepaint) {
         if (!externalShadow || !externalShadow.setNativeShadowForHwnd)
             return
@@ -263,6 +275,7 @@ Item {
         if (hwnd.length <= 0)
             return
         if (root.nativeExternalShadow) {
+            // 阴影是独立 helper HWND，只跟随主 HWND；不要用它修主窗口 live resize 黑底。
             externalShadow.setNativeShadowForHwnd(hwnd,
                                                   root.nativeExternalShadowEnabled,
                                                   Qt.resolvedUrl("../resources/images/window_shadow.png"),
@@ -288,6 +301,19 @@ Item {
             root.snapShadowSuppressed = false
     }
 
+    function toggleMaximizedPrepared() {
+        if (typeof NativeHost === "undefined" || !NativeHost)
+            return
+        const wasMaximized = NativeHost.isMaximizedState()
+        const wasSnapped = NativeHost.isSnappedState()
+        if (!wasMaximized && !wasSnapped)
+            root.fadeOutExternalShadow()
+        root.nativeMaximized = !wasMaximized
+        root.nativeSnapped = false
+        root.syncNativeCornerRadius()
+        NativeHost.toggleMaximized()
+    }
+
     function adjustFontScaleByWheel(deltaY) {
         if (typeof App === "undefined" || !App || !App.theme)
             return
@@ -298,12 +324,7 @@ Item {
     }
 
     function childTitleFor(pageKey) {
-        if (pageKey === "settings") return "\u8bbe\u7f6e"
-        if (pageKey === "tools") return "\u5de5\u5177"
-        if (pageKey === "update") return "\u66f4\u65b0"
-        if (pageKey === "about") return "\u5173\u4e8e"
-        if (pageKey === "inline-demo") return "\u9875\u5185\u5b50\u7a97\u53e3"
-        return "\u9996\u9875"
+        return Core.AppInfo.pageTitle(pageKey)
     }
 
     function openChildByPolicy(pageKey, props, mode) {
@@ -342,8 +363,8 @@ Item {
         radius: root.cornerRadius
         antialiasing: true
         color: root.displaySurfaceColor
-        border.color: root.nativeMaximized ? "transparent" : root.displaySurfaceBorderColor
-        border.width: root.nativeMaximized ? 0 : root.stableHairline
+        border.color: (root.nativeMaximized || root.nativeSizeMoveActive) ? "transparent" : root.displaySurfaceBorderColor
+        border.width: (root.nativeMaximized || root.nativeSizeMoveActive) ? 0 : root.stableHairline
         z: 0.5
         Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
         Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
@@ -413,7 +434,7 @@ Item {
                 onMoveRequested: function(localX, localY) { NativeHost.activateHost(); NativeHost.beginSystemMove(localX, localY) }
                 onMoveUpdated: NativeHost.updateSystemMove()
                 onMoveFinished: NativeHost.endSystemMove()
-                onToggleMaximizeRequested: NativeHost.toggleMaximized()
+                onToggleMaximizeRequested: root.toggleMaximizedPrepared()
                 onMinimizeRequested: NativeHost.showMinimizedNative()
                 onCloseRequested: NativeHost.closeWindow()
                 onThemeToggleRequested: function(localPos, nextMode) { root.changeThemeWithRipple(nextMode, localPos.x, localPos.y) }
@@ -490,8 +511,8 @@ Item {
                     Qt.callLater(function() {
                         if (inlineWindowManagerLoader.item && inlineWindowManagerLoader.item.windowCount === 0) {
                             inlineWindowManagerLoader.active = false
-                            if (typeof App !== "undefined" && App && App.trimMemory)
-                                App.trimMemory()
+                            if (typeof App !== "undefined" && App && App.trimMemoryAfterInlineWindowsClosed)
+                                Qt.callLater(App.trimMemoryAfterInlineWindowsClosed)
                         }
                     })
                 }
@@ -503,13 +524,12 @@ Item {
             anchors.fill: parent
             anchors.margins: root.stableHairline
             z: 90
+            visible: !root.nativeSizeMoveActive
             radius: Math.max(0, root.cornerRadius - root.stableHairline)
             color: "transparent"
             border.color: root.cornerRadius > 0 ? Core.Theme.color.windowEdge : "transparent"
-            border.width: root.cornerRadius > 0 ? root.stableHairline * 1.15 : 0
+            border.width: (root.cornerRadius > 0 && !root.nativeSizeMoveActive) ? root.stableHairline * 1.15 : 0
             antialiasing: true
-            layer.enabled: root.cornerRadius > 0
-            layer.smooth: true
         }
 
         ListModel { id: toastModel }
@@ -544,19 +564,28 @@ Item {
         interval: 1000
         repeat: false
         onTriggered: {
-            if (typeof App !== "undefined" && App && App.trimMemory)
+            if (typeof App !== "undefined" && App && App.trimResizeMemory)
+                App.trimResizeMemory()
+            else if (typeof App !== "undefined" && App && App.trimMemory)
                 App.trimMemory()
         }
     }
 
+    function smokeShowPage(pageKey) {
+        if (!pageKey || pageKey.length <= 0)
+            return false
+        sideNav.restore()
+        sideNav.currentPage = String(pageKey)
+        pageHost.showPage(String(pageKey))
+        return true
+    }
+
     onWidthChanged: {
         Qt.callLater(root.syncNativeHitTestMetrics)
-        root.syncExternalShadow(false)
         resizeTrimTimer.restart()
     }
     onHeightChanged: {
         Qt.callLater(root.syncNativeHitTestMetrics)
-        root.syncExternalShadow(false)
         resizeTrimTimer.restart()
     }
 
@@ -568,6 +597,10 @@ Item {
         }
         function onGeometryChanged() {
             root.syncNativeState()
+        }
+        function onNativeShown() {
+            root.syncNativeState()
+            root.syncExternalShadow(true)
         }
         function onSnapPreviewChanged(key, x, y, w, h, visible) {
             if (key !== root.windowKey)
@@ -613,13 +646,19 @@ Item {
         }
     }
 
+    Connections {
+        target: (typeof App !== "undefined" && App) ? App : null
+        function onOpenChildRequested(pageKey, mode, props) {
+            root.openChildByPolicy(pageKey, props, mode)
+        }
+    }
+
     Component.onCompleted: {
         root.commitSurfaceColor(Core.Theme.color.surface, Core.Theme.color.outline)
         root.syncNativeState()
         if (App && App.tray)
             App.tray.registerWindow(NativeHost)
         Qt.callLater(root.syncNativeHitTestMetrics)
-        Qt.callLater(function() { root.syncExternalShadow(true) })
     }
     Component.onDestruction: root.cleanupExternalShadow()
     onCornerRadiusChanged: {

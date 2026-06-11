@@ -1,11 +1,11 @@
 import QtQuick
-import QtQuick.Controls
 import "../core" as Core
 import "../controls"
 
 Item {
     id: root
 
+    property bool deferredControlsReady: false
     property bool appReady: typeof App !== "undefined" && App !== null
     function settingValue(key, fallback) { return appReady && App.settings ? App.settings.valueOr(key, fallback) : fallback }
     function settingsPath() { return appReady && App.settings ? App.settings.path() : "" }
@@ -36,6 +36,14 @@ Item {
         if (host && host.showToast)
             host.showToast(message)
     }
+    function commitFontSlider() {
+        if (root.appReady && App.theme)
+            App.theme.setFontScale(fontSlider.value / 100.0)
+    }
+
+    Component.onCompleted: Qt.callLater(function() {
+        root.deferredControlsReady = true
+    })
 
     DragScrollArea {
         anchors.fill: parent
@@ -98,65 +106,25 @@ Item {
                         Text { text: Math.round(13 * Core.Theme.fontScale) + " px / " + Math.round(Core.Theme.fontScale * 100) + "%"; color: Core.Theme.color.mutedText; font.pixelSize: Core.Theme.fontSize.control; width: Core.Theme.dp(94); height: Core.Theme.metrics.controlHeight; verticalAlignment: Text.AlignVCenter }
                         AppButton { text: "重置"; variant: "soft"; minWidth: Core.Theme.dp(56); horizontalPadding: Core.Theme.dp(12); onClicked: if (root.appReady && App.theme) App.theme.resetFontScale() }
                     }
-                    Slider {
+                    AppSlider {
                         id: fontSlider
                         width: parent.width
                         from: 85
                         to: 130
                         stepSize: 5
-                        snapMode: Slider.SnapAlways
+                        tickCount: 10
                         value: Math.round(Core.Theme.fontScale * 100 / 5) * 5
-                        live: true
-                        onMoved: if (root.appReady && App.theme) App.theme.setFontScale(value / 100.0)
-                        background: Item {
-                            x: fontSlider.leftPadding
-                            y: fontSlider.topPadding + fontSlider.availableHeight / 2 - height / 2
-                            implicitWidth: Core.Theme.dp(200)
-                            implicitHeight: Core.Theme.dp(18)
-                            width: fontSlider.availableWidth
-                            height: implicitHeight
-                            Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: parent.width
-                                height: Core.Theme.dp(4)
-                                radius: 2
-                                color: Core.Theme.primarySoft
-                                Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
-                            }
-                            Rectangle {
-                                anchors.verticalCenter: parent.verticalCenter
-                                width: fontSlider.visualPosition * parent.width
-                                height: Core.Theme.dp(4)
-                                radius: 2
-                                color: Core.Theme.primary
-                                Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
-                            }
-                            Repeater {
-                                model: 10
-                                delegate: Rectangle {
-                                    width: Core.Theme.dp(2)
-                                    height: Core.Theme.dp(index % 2 === 0 ? 10 : 7)
-                                    radius: 1
-                                    color: Core.Theme.mode === "dark" ? "#A8A3C7" : "#667085"
-                                    opacity: 0.75
-                                    x: index * (parent.width - width) / 9
-                                    anchors.verticalCenter: parent.verticalCenter
-                                    Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
-                                }
-                            }
+                        onMoved: fontCommitDelay.restart()
+                        onCommitted: {
+                            fontCommitDelay.stop()
+                            root.commitFontSlider()
                         }
-                        handle: Rectangle {
-                            x: fontSlider.leftPadding + fontSlider.visualPosition * (fontSlider.availableWidth - width)
-                            y: fontSlider.topPadding + fontSlider.availableHeight / 2 - height / 2
-                            width: Core.Theme.dp(20)
-                            height: Core.Theme.dp(20)
-                            radius: width / 2
-                            color: Core.Theme.primary
-                            border.color: Core.Theme.color.card
-                            border.width: 2
-                            Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
-                            Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
-                        }
+                    }
+                    Timer {
+                        id: fontCommitDelay
+                        interval: 90
+                        repeat: false
+                        onTriggered: root.commitFontSlider()
                     }
                     Connections { target: root.appReady && App.theme ? App.theme : null; function onFontScaleChanged(scale) { fontSlider.value = Math.round(scale * 100 / fontSlider.stepSize) * fontSlider.stepSize } }
                     Row {
@@ -174,8 +142,31 @@ Item {
                     Text { width: parent.width; text: "可以直接替换默认 PNG，也可以在下面输入 PNG/ICO 的绝对路径并保存。"; color: Core.Theme.color.mutedText; font.pixelSize: Core.Theme.fontSize.caption; wrapMode: Text.WordWrap; lineHeight: Core.Theme.bodyLineHeight }
                 }
 
-                AppTextField { id: trayIconPathInput; width: parent.width; placeholderText: "自定义托盘图标路径，可留空"; storageKey: "tray/iconPath"; autoLoad: true; onSaved: if (root.appReady && App.tray) App.tray.setIconPath(text) }
-                AppTextField { id: projectPathInput; width: parent.width; placeholderText: "默认项目路径"; storageKey: "paths/defaultProject"; autoLoad: true }
+                Loader {
+                    id: trayIconPathInputLoader
+                    width: parent.width
+                    height: item ? item.height : Core.Theme.metrics.fieldHeight
+                    active: root.deferredControlsReady
+                    sourceComponent: AppTextField {
+                        width: trayIconPathInputLoader.width
+                        placeholderText: "自定义托盘图标路径，可留空"
+                        storageKey: "tray/iconPath"
+                        autoLoad: true
+                        onSaved: if (root.appReady && App.tray) App.tray.setIconPath(text)
+                    }
+                }
+                Loader {
+                    id: projectPathInputLoader
+                    width: parent.width
+                    height: item ? item.height : Core.Theme.metrics.fieldHeight
+                    active: root.deferredControlsReady
+                    sourceComponent: AppTextField {
+                        width: projectPathInputLoader.width
+                        placeholderText: "默认项目路径"
+                        storageKey: "paths/defaultProject"
+                        autoLoad: true
+                    }
+                }
 
                 Flow {
                     width: parent.width
@@ -185,10 +176,12 @@ Item {
                         text: "保存设置"
                         onClicked: {
                             if (!root.appReady || !App.settings) return
-                            App.settings.setValue("paths/defaultProject", projectPathInput.text)
-                            App.settings.setValue("tray/iconPath", trayIconPathInput.text)
+                            const projectPathInput = projectPathInputLoader.item
+                            const trayIconPathInput = trayIconPathInputLoader.item
+                            App.settings.setValue("paths/defaultProject", projectPathInput ? projectPathInput.text : root.settingValue("paths/defaultProject", ""))
+                            App.settings.setValue("tray/iconPath", trayIconPathInput ? trayIconPathInput.text : root.settingValue("tray/iconPath", ""))
                             if (App.tray)
-                                App.tray.setIconPath(trayIconPathInput.text)
+                                App.tray.setIconPath(trayIconPathInput ? trayIconPathInput.text : root.settingValue("tray/iconPath", ""))
                             root.showToast("设置已保存")
                         }
                     }
@@ -249,6 +242,7 @@ Item {
                     wrapMode: Text.WordWrap
                     lineHeight: Core.Theme.bodyLineHeight
                 }
+
 
                 AppCheckBox {
                     width: parent.width
@@ -325,94 +319,27 @@ Item {
                     }
                 }
 
-                Column {
+                Loader {
+                    id: developerOptionsLoader
                     width: parent.width
+                    active: root.appReady && App.performance && App.performance.developerUnlocked
+                    visible: active
+                    sourceComponent: Column {
+                    width: developerOptionsLoader.width
                     spacing: Core.Theme.dp(8)
-                    visible: root.appReady && App.performance && App.performance.developerUnlocked
 
                     Flow {
                         width: parent.width
                         spacing: Core.Theme.dp(10)
                         Text { text: "资源档位"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.fontSize.body; width: Core.Theme.dp(86); height: Core.Theme.metrics.controlHeight; verticalAlignment: Text.AlignVCenter }
-                        ComboBox {
+                        AppSelect {
                             id: profileCombo
-                            property int rowHeight: Core.Theme.dp(34)
                             width: Math.min(Core.Theme.dp(230), Math.max(Core.Theme.dp(150), parent.width - Core.Theme.dp(96)))
-                            height: Core.Theme.metrics.controlHeight
                             model: ["自动", "普通模式", "低内存模拟"]
                             currentIndex: root.profileIndex(root.performanceProfile())
                             onActivated: function(index) {
                                 if (root.appReady && App.performance)
                                     App.performance.setResourceProfile(root.profileFromIndex(index))
-                            }
-                            contentItem: Text {
-                                leftPadding: Core.Theme.dp(12)
-                                rightPadding: Core.Theme.dp(32)
-                                text: profileCombo.displayText
-                                color: Core.Theme.color.text
-                                font.pixelSize: Core.Theme.fontSize.control
-                                font.family: Core.Theme.appFontFamily
-                                verticalAlignment: Text.AlignVCenter
-                                elide: Text.ElideRight
-                                Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
-                            }
-                            indicator: Text {
-                                text: "▼"
-                                color: Core.Theme.color.mutedText
-                                font.pixelSize: Core.Theme.fontSize.tiny
-                                font.family: Core.Theme.appFontFamily
-                                anchors.right: parent.right
-                                anchors.rightMargin: Core.Theme.dp(10)
-                                anchors.verticalCenter: parent.verticalCenter
-                                Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
-                            }
-                            background: Rectangle {
-                                radius: Core.Theme.radius.button
-                                color: profileCombo.pressed ? Core.Theme.color.controlPressed : (profileCombo.hovered ? Core.Theme.color.controlHover : Core.Theme.color.field)
-                                border.color: profileCombo.activeFocus ? Core.Theme.color.fieldFocusBorder : Core.Theme.color.outline
-                                border.width: 1
-                                Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
-                                Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
-                            }
-                            delegate: ItemDelegate {
-                                width: profileCombo.width
-                                height: profileCombo.rowHeight
-                                highlighted: profileCombo.highlightedIndex === index
-                                contentItem: Text {
-                                    text: modelData
-                                    color: highlighted ? Core.Theme.color.navSelectedText : Core.Theme.color.text
-                                    font.pixelSize: Core.Theme.fontSize.control
-                                    font.family: Core.Theme.appFontFamily
-                                    verticalAlignment: Text.AlignVCenter
-                                    leftPadding: Core.Theme.dp(10)
-                                    elide: Text.ElideRight
-                                    Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
-                                }
-                                background: Rectangle {
-                                    radius: Core.Theme.radius.button
-                                    color: highlighted ? Core.Theme.color.navActive : (hovered ? Core.Theme.color.controlHover : Core.Theme.alpha(Core.Theme.color.controlHover, 0))
-                                    Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
-                                }
-                            }
-                            popup: Popup {
-                                y: profileCombo.height + Core.Theme.dp(4)
-                                width: profileCombo.width
-                                padding: Core.Theme.dp(4)
-                                implicitHeight: contentItem.implicitHeight + padding * 2
-                                background: Rectangle {
-                                    radius: Core.Theme.radius.popup
-                                    color: Core.Theme.color.card
-                                    border.color: Core.Theme.color.outlineAccent
-                                    border.width: 1
-                                    Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
-                                    Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
-                                }
-                                contentItem: ListView {
-                                    clip: true
-                                    implicitHeight: Math.min(contentHeight, profileCombo.rowHeight * 3)
-                                    model: profileCombo.popup.visible ? profileCombo.delegateModel : null
-                                    currentIndex: profileCombo.highlightedIndex
-                                }
                             }
                         }
                     }
@@ -440,6 +367,7 @@ Item {
                         target: root.appReady && App.performance ? App.performance : null
                         function onResourceProfileChanged(profile) { profileCombo.currentIndex = root.profileIndex(profile) }
                     }
+                }
                 }
             }
         }

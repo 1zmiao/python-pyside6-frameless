@@ -20,6 +20,7 @@ Item {
     property int startDelay: 0
     property int totalDuration: rippleDuration + 820
     property string colorRole: "surface"
+    property real renderScale: 1.0
 
     signal finished()
 
@@ -43,15 +44,25 @@ Item {
 
     Canvas {
         id: canvas
-        anchors.fill: parent
+        readonly property real effectiveRenderScale: Math.max(0.15, Math.min(1.0, root.renderScale))
+        x: 0
+        y: 0
+        width: Math.max(1, Math.ceil(root.width * effectiveRenderScale))
+        height: Math.max(1, Math.ceil(root.height * effectiveRenderScale))
+        scale: 1.0 / effectiveRenderScale
+        transformOrigin: Item.TopLeft
+        smooth: true
         antialiasing: true
         renderTarget: Canvas.FramebufferObject
 
         onPaint: {
             const ctx = getContext("2d")
-            const w = width
-            const h = height
-            ctx.clearRect(0, 0, w, h)
+            const renderScale = canvas.effectiveRenderScale
+            const w = root.width
+            const h = root.height
+            ctx.setTransform(1, 0, 0, 1, 0, 0)
+            ctx.clearRect(0, 0, width, height)
+            ctx.setTransform(renderScale, 0, 0, renderScale, 0, 0)
             if (!root.running)
                 return
 

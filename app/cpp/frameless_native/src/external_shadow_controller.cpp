@@ -345,11 +345,25 @@ void ExternalShadowController::syncNativeShadow(QObject *targetWindow) {
     syncNativeRegisteredShadow(target->winId(), true, false);
 }
 
+void ExternalShadowController::fadeOutNativeShadow(QObject *targetWindow) {
+    QWindow *target = asWindow(targetWindow);
+    if (!target)
+        return;
+    startHidingFade(target->winId());
+}
+
 void ExternalShadowController::syncNativeShadowForHwnd(const QString &targetHwnd) {
     const WId targetId = parseHwnd(targetHwnd);
     if (!targetId)
         return;
     syncNativeRegisteredShadow(targetId, true, false);
+}
+
+void ExternalShadowController::fadeOutNativeShadowForHwnd(const QString &targetHwnd) {
+    const WId targetId = parseHwnd(targetHwnd);
+    if (!targetId)
+        return;
+    startHidingFade(targetId);
 }
 
 void ExternalShadowController::destroyNativeShadow(QObject *targetWindow) {
@@ -634,7 +648,12 @@ void ExternalShadowController::syncNativeRegisteredShadow(WId targetId, const QR
         return;
     NativeShadowState &state = it.value();
     if (!shouldShowNativeShadow(state)) {
-        hideNativeShadow(state);
+        if (!state.hidingFadeScheduled) {
+            startHidingFade(targetId);
+            return;
+        }
+        const QRect fadeRect = state.lastTargetRect.isValid() ? state.lastTargetRect : targetRect;
+        updateNativeShadowBitmap(state, fadeRect, stackBehind, forceRepaint);
         return;
     }
     updateNativeShadowBitmap(state, targetRect, stackBehind, forceRepaint);
@@ -655,6 +674,8 @@ void ExternalShadowController::hideNativeShadow(NativeShadowState &state) {
     state.shown = false;
     state.openingFadeScheduled = false;
     state.openingOpacityScale = 1.0;
+    state.hidingFadeScheduled = false;
+    state.hidingOpacityScale = 1.0;
 }
 
 void ExternalShadowController::destroyNativeShadowState(NativeShadowState &state) {
@@ -731,6 +752,7 @@ bool ExternalShadowController::ensureNativeShadowBitmap(NativeShadowState &state
     return false;
 #endif
 }
+
 bool ExternalShadowController::loadNativeShadowAsset(NativeShadowState &state, const QUrl &assetUrl) {
     if (state.assetUrl == assetUrl && !state.source.isNull())
         return true;
@@ -818,6 +840,8 @@ QImage ExternalShadowController::renderNativeShadowBitmap(const NativeShadowStat
     painter.setRenderHint(QPainter::SmoothPixmapTransform, false);
     painter.setOpacity(qBound<qreal>(0.0, state.opacity * opacityScale, 1.0));
     if (dCenter.width() > 0 && dCenter.height() > 0 && sCenter.width() > 0 && sCenter.height() > 0) {
+        // 外置 helper 阴影必须保留 PNG 中心填充。掏空中心曾导致启动/缩放不同步时
+        // 露出被裁切的矩形边界；黑底问题不属于 shadow center 的修复范围。
         painter.drawImage(dCenter, source, sCenter);
     }
     painter.drawImage(dTopLeft, source, sTopLeft);
@@ -876,14 +900,20 @@ void ExternalShadowController::updateNativeShadowBitmap(NativeShadowState &state
         stackBehind = true;
     }
 
-    if (state.openingFadeScheduled) {
-        state.openingFadeScheduled = false;
-        state.openingOpacityScale = 1.0;
+    if (!state.everShown && !state.shown && !state.openingFadeScheduled) {
+        // 只对首次显示做很短的淡入，掩盖 helper 比主窗口晚一拍出现的视觉跳变。
+        // 缩放跟随不能复用这条淡入逻辑，否则会造成阴影滞后和闪跳。
+        state.openingFadeScheduled = true;
+        state.openingOpacityScale = 0.16;
+        QTimer::singleShot(24, this, [this, targetId]() {
+            advanceOpeningFade(targetId, 1);
+        });
     }
-    const qreal opacityScale = 1.0;
+    const qreal opacityScale = state.hidingFadeScheduled
+        ? state.hidingOpacityScale
+        : (state.openingFadeScheduled ? state.openingOpacityScale : 1.0);
 
     if (forceRepaint || sizeChanged || !state.shown) {
-
         const int liveCacheSlackPx = (state.inSizeMove || state.sizing)
                                      ? dpiScaled(qBound(96, state.margin * 3, 192), targetId)
                                      : 0;
@@ -925,7 +955,8 @@ void ExternalShadowController::updateNativeShadowBitmap(NativeShadowState &state
     state.lastTargetRect = targetRect;
     state.lastShadowRect = shadowRect;
     state.shown = true;
-    state.everShown = true;
+    if (!state.openingFadeScheduled)
+        state.everShown = true;
 #else
     Q_UNUSED(state)
     Q_UNUSED(targetRect)
@@ -949,8 +980,8 @@ void ExternalShadowController::advanceOpeningFade(WId targetId, int step) {
         return;
     }
 
-    static constexpr int kFadeFrames = 12;
-    static constexpr int kFadeFrameMs = 16;
+    static constexpr int kFadeFrames = 8;
+    static constexpr int kFadeFrameMs = 24;
     const int clampedStep = qBound(1, step, kFadeFrames);
     const qreal t = qreal(clampedStep) / qreal(kFadeFrames);
     state.openingOpacityScale = t * t * (3.0 - 2.0 * t);
@@ -965,6 +996,60 @@ void ExternalShadowController::advanceOpeningFade(WId targetId, int step) {
 
     QTimer::singleShot(kFadeFrameMs, this, [this, targetId, clampedStep]() {
         advanceOpeningFade(targetId, clampedStep + 1);
+    });
+#else
+    Q_UNUSED(targetId)
+    Q_UNUSED(step)
+#endif
+}
+
+void ExternalShadowController::startHidingFade(WId targetId) {
+#ifdef Q_OS_WIN
+    auto it = m_nativeShadowByTarget.find(targetId);
+    if (it == m_nativeShadowByTarget.end())
+        return;
+    NativeShadowState &state = it.value();
+    if (!state.shown || state.hidingFadeScheduled) {
+        if (!state.shown)
+            hideNativeShadow(state);
+        return;
+    }
+    state.openingFadeScheduled = false;
+    state.openingOpacityScale = 1.0;
+    state.hidingFadeScheduled = true;
+    state.hidingOpacityScale = 1.0;
+    QTimer::singleShot(0, this, [this, targetId]() {
+        advanceHidingFade(targetId, 1);
+    });
+#else
+    Q_UNUSED(targetId)
+#endif
+}
+
+void ExternalShadowController::advanceHidingFade(WId targetId, int step) {
+#ifdef Q_OS_WIN
+    auto it = m_nativeShadowByTarget.find(targetId);
+    if (it == m_nativeShadowByTarget.end())
+        return;
+    NativeShadowState &state = it.value();
+    if (!state.hidingFadeScheduled)
+        return;
+    static constexpr int kFadeFrames = 5;
+    static constexpr int kFadeFrameMs = 18;
+    const int clampedStep = qBound(1, step, kFadeFrames);
+    const qreal t = qreal(clampedStep) / qreal(kFadeFrames);
+    const qreal eased = t * t * (3.0 - 2.0 * t);
+    state.hidingOpacityScale = qBound<qreal>(0.0, 1.0 - eased, 1.0);
+    if (state.hidingOpacityScale > 0.001) {
+        const QRect fadeRect = state.lastTargetRect.isValid() ? state.lastTargetRect : nativeTargetRect(targetId);
+        syncNativeRegisteredShadow(targetId, fadeRect, true, true);
+    }
+    if (clampedStep >= kFadeFrames) {
+        hideNativeShadow(state);
+        return;
+    }
+    QTimer::singleShot(kFadeFrameMs, this, [this, targetId, clampedStep]() {
+        advanceHidingFade(targetId, clampedStep + 1);
     });
 #else
     Q_UNUSED(targetId)

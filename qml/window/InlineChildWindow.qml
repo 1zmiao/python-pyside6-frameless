@@ -38,7 +38,7 @@ Item {
     property color brightEdgeColor: Core.Theme.mode === "dark" ? Core.Theme.alpha(Qt.lighter(Core.Theme.primary, 1.65), 0.88) : Core.Theme.color.outlineAccent
     property real moveAnchorX: 0
     property real moveAnchorY: 0
-    property bool nativeTitleDragReady: nativeTitleDragLoader.status === Loader.Ready
+    property bool nativeTitleDragReady: manager && manager.nativeInlineMoveAvailable
 
     signal closeRequested(string pageKey)
     signal minimizeRequested(string pageKey)
@@ -251,11 +251,16 @@ Item {
     }
 
     function requestCloseNow() {
-        contentActive = false
-        contentLoader.source = ""
+        root.setInlineHover(false)
         closePending = true
         visible = false
         closeRequested(pageKey)
+    }
+
+    function releaseContent() {
+        contentActive = false
+        contentLoader.source = ""
+        contentLoader.active = false
     }
 
     function setInlineHover(active) {
@@ -431,7 +436,8 @@ Item {
     MouseArea {
         id: titleMouseArea
         z: 21
-        enabled: !root.nativeTitleDragReady
+        enabled: !root.nativeTitleDragReady && root.visible
+        visible: enabled
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.rightMargin: root.minimized ? 0 : controlsHost.width + Core.Theme.dp(12)
@@ -507,8 +513,16 @@ Item {
         anchors.rightMargin: root.minimized ? 0 : controlsHost.width + Core.Theme.dp(12)
         anchors.top: parent.top
         height: root.minimized ? parent.height : Core.Theme.metrics.titleBarHeight
-        active: true
+        active: !root.nativeTitleDragReady
         sourceComponent: nativeTitleDragComponent
+        onStatusChanged: {
+            if (status === Loader.Ready) {
+                if (typeof App !== "undefined" && App && App.logRuntime)
+                    App.logRuntime("inline native title drag ready")
+            } else if (status === Loader.Error) {
+                console.warn("Native inline title drag area unavailable")
+            }
+        }
     }
 
     Component {

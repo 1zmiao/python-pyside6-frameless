@@ -1,0 +1,207 @@
+from __future__ import annotations
+
+import os
+import sys
+import time
+
+
+_WS_PRIVATE_CACHE: dict[int, tuple[float, float]] = {}
+
+
+def mb(value: int) -> float:
+    return round(float(value) / 1024.0 / 1024.0, 1)
+
+
+def current_process_memory() -> dict[str, float]:
+    if os.name == "nt":
+        sample = _windows_current_process_memory()
+        if sample:
+            return sample
+    return {"rss": 0.0, "private": 0.0}
+
+
+def _windows_current_process_memory() -> dict[str, float] | None:
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class PROCESS_MEMORY_COUNTERS_EX(ctypes.Structure):
+            _fields_ = [
+                ("cb", wintypes.DWORD),
+                ("PageFaultCount", wintypes.DWORD),
+                ("PeakWorkingSetSize", ctypes.c_size_t),
+                ("WorkingSetSize", ctypes.c_size_t),
+                ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                ("PagefileUsage", ctypes.c_size_t),
+                ("PeakPagefileUsage", ctypes.c_size_t),
+                ("PrivateUsage", ctypes.c_size_t),
+            ]
+
+        kernel32 = ctypes.windll.kernel32
+        psapi = ctypes.windll.psapi
+        PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+        PROCESS_QUERY_INFORMATION = 0x0400
+        PROCESS_VM_READ = 0x0010
+        kernel32.GetCurrentProcessId.restype = wintypes.DWORD
+        kernel32.OpenProcess.argtypes = [wintypes.DWORD, wintypes.BOOL, wintypes.DWORD]
+        kernel32.OpenProcess.restype = ctypes.c_void_p
+        kernel32.CloseHandle.argtypes = [ctypes.c_void_p]
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        psapi.GetProcessMemoryInfo.argtypes = [ctypes.c_void_p, ctypes.POINTER(PROCESS_MEMORY_COUNTERS_EX), wintypes.DWORD]
+        psapi.GetProcessMemoryInfo.restype = wintypes.BOOL
+
+        pid = int(kernel32.GetCurrentProcessId())
+        handle = kernel32.OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+            False,
+            pid,
+        )
+        if not handle:
+            return None
+        try:
+            counters = PROCESS_MEMORY_COUNTERS_EX()
+            counters.cb = ctypes.sizeof(counters)
+            if not psapi.GetProcessMemoryInfo(handle, ctypes.byref(counters), counters.cb):
+                return None
+            ws_private = _windows_working_set_private_mb(handle, cache_key=pid)
+            return {
+                "rss": mb(int(counters.WorkingSetSize)),
+                "private": mb(int(counters.PrivateUsage)),
+                "ws_private": ws_private,
+            }
+        finally:
+            kernel32.CloseHandle(handle)
+    except Exception:
+        return None
+
+
+def _windows_working_set_private_mb(handle: int, cache_key: int = 0) -> float:
+    global _WS_PRIVATE_CACHE
+    now = time.monotonic()
+    cached_at, cached_value = _WS_PRIVATE_CACHE.get(cache_key, (0.0, 0.0))
+    if now - cached_at < 1.25:
+        return cached_value
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        class MEMORY_BASIC_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("BaseAddress", ctypes.c_void_p),
+                ("AllocationBase", ctypes.c_void_p),
+                ("AllocationProtect", wintypes.DWORD),
+                ("RegionSize", ctypes.c_size_t),
+                ("State", wintypes.DWORD),
+                ("Protect", wintypes.DWORD),
+                ("Type", wintypes.DWORD),
+            ]
+
+        class PSAPI_WORKING_SET_EX_BLOCK(ctypes.Structure):
+            _fields_ = [("Flags", ctypes.c_size_t)]
+
+        class PSAPI_WORKING_SET_EX_INFORMATION(ctypes.Structure):
+            _fields_ = [
+                ("VirtualAddress", ctypes.c_void_p),
+                ("VirtualAttributes", PSAPI_WORKING_SET_EX_BLOCK),
+            ]
+
+        kernel32 = ctypes.windll.kernel32
+        psapi = ctypes.windll.psapi
+
+        kernel32.GetSystemInfo.argtypes = [ctypes.c_void_p]
+        kernel32.VirtualQueryEx.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_void_p,
+            ctypes.POINTER(MEMORY_BASIC_INFORMATION),
+            ctypes.c_size_t,
+        ]
+        kernel32.VirtualQueryEx.restype = ctypes.c_size_t
+        psapi.QueryWorkingSetEx.argtypes = [ctypes.c_void_p, ctypes.c_void_p, wintypes.DWORD]
+        psapi.QueryWorkingSetEx.restype = wintypes.BOOL
+
+        class SYSTEM_INFO_UNION(ctypes.Union):
+            _fields_ = [
+                ("dwOemId", wintypes.DWORD),
+                ("w", ctypes.c_ushort * 2),
+            ]
+
+        class SYSTEM_INFO(ctypes.Structure):
+            _anonymous_ = ("u",)
+            _fields_ = [
+                ("u", SYSTEM_INFO_UNION),
+                ("dwPageSize", wintypes.DWORD),
+                ("lpMinimumApplicationAddress", ctypes.c_void_p),
+                ("lpMaximumApplicationAddress", ctypes.c_void_p),
+                ("dwActiveProcessorMask", ctypes.c_size_t),
+                ("dwNumberOfProcessors", wintypes.DWORD),
+                ("dwProcessorType", wintypes.DWORD),
+                ("dwAllocationGranularity", wintypes.DWORD),
+                ("wProcessorLevel", wintypes.WORD),
+                ("wProcessorRevision", wintypes.WORD),
+            ]
+
+        system_info = SYSTEM_INFO()
+        kernel32.GetSystemInfo(ctypes.byref(system_info))
+        page_size = max(4096, int(system_info.dwPageSize))
+        max_addr = int(system_info.lpMaximumApplicationAddress or (2**47 if sys.maxsize > 2**32 else 2**31))
+
+        MEM_COMMIT = 0x1000
+        PAGE_GUARD = 0x100
+        PAGE_NOACCESS = 0x01
+        mbi = MEMORY_BASIC_INFORMATION()
+        address = 0
+        private_working_set = 0
+        chunk_limit = 8192
+        entries: list[PSAPI_WORKING_SET_EX_INFORMATION] = []
+
+        def flush_entries() -> None:
+            nonlocal private_working_set, entries
+            if not entries:
+                return
+            array_type = PSAPI_WORKING_SET_EX_INFORMATION * len(entries)
+            array = array_type(*entries)
+            byte_size = ctypes.sizeof(array)
+            if psapi.QueryWorkingSetEx(handle, ctypes.byref(array), byte_size):
+                for item in array:
+                    flags = int(item.VirtualAttributes.Flags)
+                    valid = flags & 0x1
+                    shared = (flags >> 15) & 0x1
+                    if valid and not shared:
+                        private_working_set += page_size
+            entries = []
+
+        while address < max_addr:
+            result = kernel32.VirtualQueryEx(
+                handle,
+                ctypes.c_void_p(address),
+                ctypes.byref(mbi),
+                ctypes.sizeof(mbi),
+            )
+            if not result:
+                address += page_size
+                continue
+            base = int(mbi.BaseAddress or address)
+            region_size = int(mbi.RegionSize or page_size)
+            protect = int(mbi.Protect)
+            if int(mbi.State) == MEM_COMMIT and not (protect & PAGE_GUARD) and not (protect & PAGE_NOACCESS):
+                end = min(base + region_size, max_addr)
+                page = base
+                while page < end:
+                    entries.append(PSAPI_WORKING_SET_EX_INFORMATION(ctypes.c_void_p(page), PSAPI_WORKING_SET_EX_BLOCK(0)))
+                    if len(entries) >= chunk_limit:
+                        flush_entries()
+                    page += page_size
+            next_address = base + max(region_size, page_size)
+            if next_address <= address:
+                next_address = address + page_size
+            address = next_address
+
+        flush_entries()
+        value = mb(private_working_set)
+        _WS_PRIVATE_CACHE[cache_key] = (time.monotonic(), value)
+        return value
+    except Exception:
+        return 0.0
