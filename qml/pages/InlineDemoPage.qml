@@ -1,17 +1,17 @@
-import QtQuick
+﻿import QtQuick
 import "../core" as Core
 import "../controls"
 
 Item {
     DragScrollArea {
         anchors.fill: parent
-        spacing: Core.Theme.dp(14)
+        spacing: Core.Theme.metrics.spacing
 
         Rectangle {
             width: parent.width
-            height: Math.max(Core.Theme.dp(220), content.implicitHeight + Core.Theme.dp(36))
+            height: Math.max(Core.Theme.dp(220), content.implicitHeight + Core.Theme.metrics.cardHeightPadding)
             radius: Core.Theme.radius.card
-            color: Core.Theme.color.card
+            color: Core.Theme.color.hero
             border.color: Core.Theme.color.cardOutline
             Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
             Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
@@ -23,7 +23,7 @@ Item {
             Column {
                 id: content
                 anchors.fill: parent
-                anchors.margins: Core.Theme.dp(18)
+                anchors.margins: Core.Theme.metrics.cardPadding
                 spacing: Core.Theme.dp(10)
 
                 Text {
@@ -56,8 +56,18 @@ Item {
                 Flow {
                     width: parent.width
                     spacing: Core.Theme.dp(8)
-                    AppButton { text: "打开关于页内窗"; variant: "soft"; onClicked: App.requestOpenChild("about", "inline", ({})) }
-                    AppButton { text: "打开独立关于窗"; variant: "soft"; onClicked: App.requestOpenChild("about", "native", ({})) }
+                    AppButton {
+                        text: "打开关于页内窗"
+                        variant: "soft"
+                        onPressStarted: App.prepareOpenChild("about", "inline")
+                        onClicked: App.requestOpenChild("about", "inline", ({}))
+                    }
+                    AppButton {
+                        text: "打开独立关于窗"
+                        variant: "soft"
+                        onPressStarted: App.prepareOpenChild("about", "native")
+                        onClicked: App.requestOpenChild("about", "native", ({}))
+                    }
                 }
             }
         }

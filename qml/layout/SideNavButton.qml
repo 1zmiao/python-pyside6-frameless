@@ -26,6 +26,20 @@ Item {
         Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
     }
 
+    Rectangle {
+        visible: root.selected && !root.compact
+        width: Core.Theme.dp(3)
+        height: Core.Theme.dp(20)
+        radius: width / 2
+        anchors.left: parent.left
+        anchors.leftMargin: Core.Theme.dp(5)
+        anchors.verticalCenter: parent.verticalCenter
+        color: Core.Theme.mode === "dark" ? Qt.lighter(Core.Theme.primary, 1.95) : Core.Theme.primary
+        opacity: Core.Theme.mode === "dark" ? 1.0 : 0.95
+        Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+        Behavior on opacity { NumberAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+    }
+
     IconImage {
         x: root.compact ? Math.round((parent.width - width) / 2) : Core.Theme.dp(11)
         anchors.verticalCenter: parent.verticalCenter

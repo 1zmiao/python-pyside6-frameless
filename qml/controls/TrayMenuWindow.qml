@@ -4,7 +4,7 @@ import "../core" as Core
 
 Window {
     id: root
-    flags: Qt.Tool | Qt.FramelessWindowHint | Qt.WindowDoesNotAcceptFocus | Qt.NoDropShadowWindowHint | Qt.WindowStaysOnTopHint
+    flags: Qt.Tool | Qt.FramelessWindowHint | Qt.NoDropShadowWindowHint | Qt.WindowStaysOnTopHint
     color: "transparent"
     visible: false
 
@@ -41,9 +41,13 @@ Window {
         y = panelY - root.shadowMargin
         lastCursorPos = Qt.point(px, py)
         openedAt = Date.now()
+        if (typeof App !== "undefined" && App && App.tray && App.tray.resetMousePressEdge)
+            App.tray.resetMousePressEdge()
         visible = true
         if (typeof App !== "undefined" && App && App.tray && App.tray.raiseTrayMenuWindow)
             App.tray.raiseTrayMenuWindow(root)
+        raise()
+        requestActivate()
     }
 
     function toggleAt(px, py) {
@@ -59,6 +63,28 @@ Window {
         visible = false
         if (typeof App !== "undefined" && App && App.trimMemory)
             Qt.callLater(App.trimMemory)
+    }
+
+    onActiveChanged: {
+        if (!active && visible && Date.now() - openedAt > 160)
+            closeMenu()
+    }
+
+    MouseArea {
+        anchors.fill: parent
+        z: 0.5
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+        hoverEnabled: true
+        onPressed: function(mouse) {
+            const insidePanel = mouse.x >= panel.x && mouse.x <= panel.x + panel.width
+                                && mouse.y >= panel.y && mouse.y <= panel.y + panel.height
+            if (!insidePanel)
+                root.closeMenu()
+            mouse.accepted = true
+        }
+        onReleased: function(mouse) { mouse.accepted = true }
+        onClicked: function(mouse) { mouse.accepted = true }
+        onWheel: function(wheel) { wheel.accepted = true }
     }
 
     PanelShadow {
@@ -81,8 +107,10 @@ Window {
         radius: Core.Theme.radius.popup
         antialiasing: true
         color: Core.Theme.color.card
-        border.color: Core.Theme.color.outlineAccent
         border.width: 1
+        border.color: Core.Theme.mode === "dark" ? Core.Theme.alpha(Qt.lighter(Core.Theme.primary, 1.65), 0.88) : Core.Theme.color.outlineAccent
+        Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
+        Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
 
         Column {
             anchors.fill: parent
@@ -119,7 +147,7 @@ Window {
         onTriggered: {
             if (Date.now() - root.openedAt < 180)
                 return
-            if (typeof App !== "undefined" && App && App.tray && App.tray.mousePressedOutside(root.x, root.y, root.width, root.height))
+            if (typeof App !== "undefined" && App && App.tray && App.tray.mousePressedOutside(root.x + panel.x, root.y + panel.y, panel.width, panel.height))
                 root.closeMenu()
         }
     }

@@ -10,6 +10,7 @@ Item {
     property bool active: false
     property bool filled: false
     property string variant: "ghost" // ghost | soft | primary
+    property bool outlineGhost: false
     property bool clickOnPress: false
 
     // Compact API plus backward-compatible names used by older demo files.
@@ -22,6 +23,7 @@ Item {
     property int visualTransitionMs: (hovered || pressed) ? Core.Theme.controlTransitionMs : Core.Theme.animatedColorTransitionMs
 
     signal clicked()
+    signal pressStarted()
 
     implicitWidth: Math.max(
         minButtonWidth > 0 ? minButtonWidth : minWidth,
@@ -50,8 +52,14 @@ Item {
         anchors.fill: parent
         radius: root.radius
         color: root.bgColor()
-        border.color: root.isFilled || root.isSoft ? Core.Theme.primaryOutline : Core.Theme.alpha(Core.Theme.primaryOutline, 0)
-        border.width: root.isFilled || root.isSoft ? 1 : 0
+        border.color: root.isFilled || root.isSoft
+                      ? Core.Theme.primaryOutline
+                      : (root.outlineGhost
+                         ? (root.hovered || root.pressed
+                            ? Core.Theme.color.outlineAccent
+                            : Core.Theme.alpha(Core.Theme.color.outline, Core.Theme.mode === "dark" ? 0.72 : 0.62))
+                         : Core.Theme.alpha(Core.Theme.primaryOutline, 0))
+        border.width: root.isFilled || root.isSoft || root.outlineGhost ? 1 : 0
         Behavior on color { ColorAnimation { duration: root.visualTransitionMs; easing.type: Easing.InOutCubic } }
         Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
     }
@@ -71,7 +79,11 @@ Item {
         id: mouseArea
         anchors.fill: parent
         hoverEnabled: true
-        onPressed: if (root.clickOnPress) root.clicked()
+        onPressed: {
+            root.pressStarted()
+            if (root.clickOnPress)
+                root.clicked()
+        }
         onClicked: if (!root.clickOnPress) root.clicked()
     }
 }

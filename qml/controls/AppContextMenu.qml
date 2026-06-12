@@ -15,6 +15,7 @@ Item {
     property real menuX: 0
     property real menuY: 0
     property int menuWidth: Core.Theme.dp(178)
+    signal actionPrepared(string action)
     signal actionTriggered(string action)
 
     function openForTextField(target, px, py) {
@@ -55,7 +56,7 @@ Item {
     MouseArea {
         anchors.fill: parent
         acceptedButtons: Qt.LeftButton | Qt.RightButton
-        hoverEnabled: false
+        hoverEnabled: true
         onPressed: function(mouse) {
             const inside = mouse.x >= menuRect.x && mouse.x <= menuRect.x + menuRect.width
                            && mouse.y >= menuRect.y && mouse.y <= menuRect.y + menuRect.height
@@ -63,6 +64,10 @@ Item {
                 root.close()
             mouse.accepted = true
         }
+        onPositionChanged: function(mouse) { mouse.accepted = true }
+        onReleased: function(mouse) { mouse.accepted = true }
+        onClicked: function(mouse) { mouse.accepted = true }
+        onWheel: function(wheel) { wheel.accepted = true }
     }
 
     PanelShadow {
@@ -107,6 +112,7 @@ Item {
                     text: modelData.text || ""
                     shortcut: modelData.shortcut || ""
                     available: modelData.available === undefined ? true : modelData.available
+                    onPrepared: root.actionPrepared(modelData.action || modelData.text || "")
                     onTriggered: {
                         root.actionTriggered(modelData.action || modelData.text || "")
                         root.close()

@@ -50,6 +50,9 @@ Item {
     property alias minimizeButtonItem: minimizeButton
     property alias maximizeButtonItem: maximizeButton
     property alias closeButtonItem: closeButton
+    property bool minimizeButtonNativeHovered: false
+    property bool maximizeButtonNativeHovered: false
+    property bool closeButtonNativeHovered: false
     property alias rightAreaItem: rightArea
 
     property bool _dragStarted: false
@@ -68,6 +71,7 @@ Item {
     signal alwaysOnTopRequested(bool enabled)
     signal toggleNavRequested()
     signal menuActionRequested(string action, string kind)
+    signal menuActionPrepared(string action, string kind)
 
     function beginDrag(item, mx, my) {
         const p = item.mapToItem(root, mx, my)
@@ -417,9 +421,9 @@ Item {
             }
         }
 
-        IconButton { id: minimizeButton; visible: root.showWindowControls; width: visible ? root.rightButtonSize : 0; height: visible ? root.rightButtonSize : 0; anchors.verticalCenter: parent.verticalCenter; iconName: "minimize"; strokeWidth: 0.90; noBorder: true; onClicked: root.minimizeRequested() }
-        IconButton { id: maximizeButton; visible: root.showWindowControls; width: visible ? root.rightButtonSize : 0; height: visible ? root.rightButtonSize : 0; anchors.verticalCenter: parent.verticalCenter; iconName: root.windowMaximized ? "restore" : "maximize"; strokeWidth: 0.90; noBorder: true; onClicked: root.toggleMaximizeRequested() }
-        IconButton { id: closeButton; visible: root.showWindowControls; width: visible ? root.rightButtonSize : 0; height: visible ? root.rightButtonSize : 0; anchors.verticalCenter: parent.verticalCenter; iconName: "close"; strokeWidth: 0.90; noBorder: true; onClicked: root.closeRequested() }
+        IconButton { id: minimizeButton; visible: root.showWindowControls; width: visible ? root.rightButtonSize : 0; height: visible ? root.rightButtonSize : 0; anchors.verticalCenter: parent.verticalCenter; iconName: "minimize"; strokeWidth: 0.90; noBorder: true; forceHovered: root.minimizeButtonNativeHovered; onClicked: root.minimizeRequested() }
+        IconButton { id: maximizeButton; visible: root.showWindowControls; width: visible ? root.rightButtonSize : 0; height: visible ? root.rightButtonSize : 0; anchors.verticalCenter: parent.verticalCenter; iconName: root.windowMaximized ? "restore" : "maximize"; strokeWidth: 0.90; noBorder: true; forceHovered: root.maximizeButtonNativeHovered; onClicked: root.toggleMaximizeRequested() }
+        IconButton { id: closeButton; visible: root.showWindowControls; width: visible ? root.rightButtonSize : 0; height: visible ? root.rightButtonSize : 0; anchors.verticalCenter: parent.verticalCenter; iconName: "close"; strokeWidth: 0.90; noBorder: true; forceHovered: root.closeButtonNativeHovered; onClicked: root.closeRequested() }
     }
 
     Loader {
@@ -450,6 +454,7 @@ Item {
         active: false
         sourceComponent: AppMenu {
             parent: root.Window.window ? root.Window.window.contentItem : root
+            onActionPrepared: function(action, kind) { root.menuActionPrepared(action, kind) }
             onActionTriggered: function(action, kind) { root.menuActionRequested(action, kind) }
             onClosed: Qt.callLater(function() { menuPopupLoader.active = false })
         }

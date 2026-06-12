@@ -32,7 +32,8 @@ Item {
     property bool _encryptedLoadPending: false
     property string _storageModeKey: storageKey.length > 0 ? ("storageModes/" + storageKey) : ""
     property string _revealModeKey: storageKey.length > 0 ? ("fieldRevealModes/" + storageKey) : ""
-    readonly property bool _placeholderFloated: floatingPlaceholder && root.placeholderText.length > 0 && input.text.length > 0
+    readonly property bool _hasInputContent: input.text.length > 0 || input.preeditText.length > 0
+    readonly property bool _placeholderFloated: floatingPlaceholder && root.placeholderText.length > 0 && root._hasInputContent
 
     function applyPersistedStorageMode() {
         if (!storageKey || storageKey.length === 0 || typeof App === "undefined" || !App || !App.settings)
@@ -202,7 +203,7 @@ Item {
                ? Math.min(implicitWidth + Core.Theme.dp(1), Math.max(0, parent.width - root.padding - trailing.width - Core.Theme.dp(13)))
                : Math.max(0, parent.width - root.padding - trailing.width - Core.Theme.dp(13))
         height: implicitHeight
-        visible: root.placeholderText.length > 0 && (input.text.length === 0 || root._placeholderFloated)
+        visible: root.placeholderText.length > 0 && (!root._hasInputContent || root._placeholderFloated)
         text: root.placeholderText
         color: root.placeholderTextColor
         opacity: root._placeholderFloated ? 0.8 : 1.0

@@ -7,6 +7,7 @@ Item {
     property string text: ""
     property string shortcut: ""
     property bool available: true
+    signal prepared()
     signal triggered()
 
     width: parent ? parent.width : 160
@@ -46,6 +47,8 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: root.available ? Qt.PointingHandCursor : Qt.ArrowCursor
+        onEntered: if (root.available) root.prepared()
+        onPressed: if (root.available) root.prepared()
         onClicked: {
             if (root.available)
                 root.triggered()

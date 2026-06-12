@@ -15,7 +15,8 @@ Item {
     property bool noBorder: false
     property bool borderless: false
     property bool flat: false
-    property bool hovered: interactive && mouseArea.containsMouse
+    property bool forceHovered: false
+    property bool hovered: forceHovered || (interactive && mouseArea.containsMouse)
     property bool pressed: interactive && mouseArea.pressed
     property real strokeWidth: 1.05
     property int acceptedButtons: Qt.LeftButton | Qt.RightButton

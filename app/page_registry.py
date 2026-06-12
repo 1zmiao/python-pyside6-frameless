@@ -23,6 +23,8 @@ PAGE_DEFINITIONS: dict[str, PageDefinition] = {
     "update": PageDefinition("update", "更新", "UpdatePage.qml", "update"),
     "about": PageDefinition("about", "关于", "AboutPage.qml", "about"),
     "inline-demo": PageDefinition("inline-demo", "页内子窗口", "InlineDemoPage.qml", "dialog"),
+    "task-create": PageDefinition("task-create", "新建任务", "TaskCreatePage.qml", "tools"),
+    "task-edit": PageDefinition("task-edit", "编辑任务", "TaskEditPage.qml", "tools"),
 }
 
 DEFAULT_PAGE_KEY = "home"

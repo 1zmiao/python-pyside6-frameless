@@ -2,6 +2,7 @@ pragma Singleton
 import QtQuick
 
 QtObject {
+    signal prepareChildRequested(string pageKey, string mode)
     signal openChildRequested(string pageKey, string mode, var props)
 
     property string hoveredInlineKey: ""
@@ -24,6 +25,10 @@ QtObject {
 
     function openChild(pageKey, props) {
         openChildRequested(String(pageKey || ""), "auto", props || ({}))
+    }
+
+    function prepareChild(pageKey, mode) {
+        prepareChildRequested(String(pageKey || ""), String(mode || "auto"))
     }
 
     function openInline(pageKey, props) {

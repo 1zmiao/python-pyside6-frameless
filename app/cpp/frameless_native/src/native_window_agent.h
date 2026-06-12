@@ -39,6 +39,7 @@ public:
 
 signals:
     void nativeSizeMoveActiveChanged();
+    void nativeSystemButtonHoverChanged(const QString &role);
 
 protected:
     bool eventFilter(QObject *watched, QEvent *event) override;
@@ -57,6 +58,9 @@ private:
     void restoreClassBackgroundBrush();
     int nativeSystemButtonHitTest(qintptr lParam) const;
     bool nativeItemContainsScreenPoint(QQuickItem *item, qintptr lParam) const;
+    bool nativeItemContainsScreenPoint(QQuickItem *item, qintptr lParam, bool extendToTitleBarHeight) const;
+    QString systemButtonRoleForHit(int hit) const;
+    void setNativeSystemButtonHover(int hit);
     QColor shellBackgroundColor() const;
     void setNativeSizeMoveActive(bool active);
 
@@ -75,6 +79,8 @@ private:
     bool m_inNativeSizeMove = false;
     int m_resizeEdgeInset = 6;
     int m_resizeCornerInset = 8;
+    int m_pressedNativeButtonHit = 0;
+    int m_hoveredNativeButtonHit = 0;
     bool m_fastExitOnClose = false;
     QColor m_shellBackgroundColor;
     QUrl m_shadowSource;

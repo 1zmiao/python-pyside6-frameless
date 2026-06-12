@@ -8,7 +8,7 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QTimer, QUrl, Slot
 from PySide6.QtQml import QQmlApplicationEngine, QQmlComponent
 
-from app.page_registry import page_source_url, page_title
+from app.page_registry import page_definition, page_source_url, page_title
 from app.runtime_logging import write_runtime_log
 
 from .card_glow_provider import CardGlowImageProvider
@@ -119,6 +119,21 @@ class DialogService(QObject):
         except Exception:
             pass
 
+    @Slot(str)
+    def prepareChild(self, page_key: str) -> None:
+        if self._shutting_down or self._closing_all:
+            return
+        page_key = str(page_key or "")
+        if not page_key:
+            return
+        try:
+            child_source = self._qml_dir / "window" / ("NativeChildWindow.qml" if self._use_native_child_windows() else "ChildWindow.qml")
+            use_child_engine = self._use_shared_child_engine()
+            self._component_for(child_source, child_engine=use_child_engine)
+            self._page_component_for(page_key, child_engine=use_child_engine)
+        except Exception:
+            pass
+
 
     def set_native_window_shell(self, enabled: bool) -> None:
         self._native_window_shell = bool(enabled)
@@ -200,6 +215,14 @@ class DialogService(QObject):
             return None
         component_cache[source] = component
         return component
+
+    def _page_component_for(self, page_key: str, *, child_engine: bool = False) -> QQmlComponent | None:
+        try:
+            page = page_definition(page_key, child_default=True)
+        except Exception:
+            return None
+        source = self._qml_dir / "pages" / page.qml_file
+        return self._component_for(source, child_engine=child_engine)
 
     def trim_child_engine_caches(self, *, clear_components: bool = False) -> None:
         if self._child_card_glow_provider is not None:

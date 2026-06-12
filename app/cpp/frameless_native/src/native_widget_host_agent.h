@@ -126,6 +126,7 @@ private:
     int nativeCornerRadiusPx(int radius, quintptr host) const;
     int hitTest(qintptr lparam) const;
     int systemButtonHitTest(qreal localX, qreal localY) const;
+    int inferredSystemButtonHitTest(qreal localX, qreal localY) const;
     bool captionHitTest(qreal localX, qreal localY) const;
     void activateWindowBeneathPoint(int x, int y) const;
     QVariantMap sanitizeButtonRect(const QVariantMap &value) const;

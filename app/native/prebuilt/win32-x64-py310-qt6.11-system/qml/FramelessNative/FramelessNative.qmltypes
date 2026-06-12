@@ -570,6 +570,11 @@ Module {
             isReadonly: true
         }
         Signal { name: "nativeSizeMoveActiveChanged"; lineNumber: 41 }
+        Signal {
+            name: "nativeSystemButtonHoverChanged"
+            lineNumber: 42
+            Parameter { name: "role"; type: "QString" }
+        }
         Method {
             name: "setup"
             lineNumber: 25

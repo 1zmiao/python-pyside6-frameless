@@ -21,6 +21,21 @@ Item {
         return Core.AppInfo.pageTitle(pageKey)
     }
 
+    function savedCurrentPage() {
+        if (typeof App === "undefined" || !App || !App.settings)
+            return "home"
+        const page = String(App.settings.valueOr("ui/lastPage", "home") || "home")
+        return Core.AppInfo.pageSource(page).length > 0 ? page : "home"
+    }
+
+    function showMainPage(pageKey, persist) {
+        const page = Core.AppInfo.pageSource(pageKey).length > 0 ? String(pageKey) : "home"
+        sideNav.currentPage = page
+        pageHost.showPage(page)
+        if (persist && typeof App !== "undefined" && App && App.settings)
+            App.settings.setValue("ui/lastPage", page)
+    }
+
     function openChildByPolicy(pageKey, props, mode) {
         const openMode = mode || "auto"
         const lowMemory = (typeof App !== "undefined" && App && App.performance) ? App.performance.effectiveProfile === "low-memory" : false
@@ -39,6 +54,17 @@ Item {
         }
     }
 
+    function prepareOpenChildByPolicy(pageKey, mode) {
+        const openMode = mode || "auto"
+        const lowMemory = (typeof App !== "undefined" && App && App.performance) ? App.performance.effectiveProfile === "low-memory" : false
+        const useInline = root.inlineWindowsEnabled && (openMode === "inline" || (openMode === "auto" && lowMemory))
+        if (useInline) {
+            inlineWindowManagerLoader.active = true
+        } else if (typeof App !== "undefined" && App && App.dialogs && App.dialogs.prepareChild) {
+            App.dialogs.prepareChild(pageKey)
+        }
+    }
+
     function ensureTrayMenu() {
         if (!trayMenuLoader.item)
             trayMenuLoader.active = true
@@ -53,9 +79,7 @@ Item {
     function smokeShowPage(pageKey) {
         if (!pageKey || pageKey.length <= 0)
             return false
-        sideNav.restore()
-        sideNav.currentPage = String(pageKey)
-        pageHost.showPage(String(pageKey))
+        root.showMainPage(String(pageKey), true)
         return true
     }
 
@@ -76,7 +100,9 @@ Item {
                    ? Math.max(0, Math.min(App.settings.valueOr("layout/navWidth", Core.Theme.metrics.navWidthDefault), Core.Theme.metrics.navWidthMax))
                    : Core.Theme.metrics.navWidthDefault)
             cornerRadius: root.windowObject ? root.windowObject.cornerRadius : Core.Theme.radius.window
-            onCurrentPageChanged: pageHost.showPage(currentPage)
+            currentPage: root.savedCurrentPage()
+            onPageIntent: function(page) { pageHost.preparePage(page) }
+            onCurrentPageChanged: root.showMainPage(currentPage, true)
         }
 
         PageHost {
@@ -108,11 +134,16 @@ Item {
         }
         function onMenuActionRequested(action, kind) {
             if (kind === "page") {
-                sideNav.restore()
-                sideNav.currentPage = action
+                root.showMainPage(action, true)
             } else {
                 root.openChildByPolicy(action, ({}), "auto")
             }
+        }
+        function onMenuActionPrepared(action, kind) {
+            if (kind !== "child")
+                return
+            if (typeof App !== "undefined" && App && App.dialogs && App.dialogs.prepareChild)
+                App.dialogs.prepareChild(action)
         }
     }
 
@@ -162,6 +193,9 @@ Item {
 
     Connections {
         target: Core.InlineWindowBus
+        function onPrepareChildRequested(pageKey, mode) {
+            root.prepareOpenChildByPolicy(pageKey, mode)
+        }
         function onOpenChildRequested(pageKey, mode, props) {
             root.openChildByPolicy(pageKey, props, mode)
         }
@@ -169,6 +203,9 @@ Item {
 
     Connections {
         target: (typeof App !== "undefined" && App) ? App : null
+        function onPrepareChildRequested(pageKey, mode) {
+            root.prepareOpenChildByPolicy(pageKey, mode)
+        }
         function onOpenChildRequested(pageKey, mode, props) {
             root.openChildByPolicy(pageKey, props, mode)
         }

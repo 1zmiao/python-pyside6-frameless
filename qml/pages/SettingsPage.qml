@@ -1,4 +1,4 @@
-import QtQuick
+﻿import QtQuick
 import "../core" as Core
 import "../controls"
 
@@ -47,13 +47,13 @@ Item {
 
     DragScrollArea {
         anchors.fill: parent
-        spacing: Core.Theme.dp(16)
+        spacing: Core.Theme.metrics.spacing
 
         Rectangle {
             width: parent.width
-            height: settingsColumn.implicitHeight + Core.Theme.dp(36)
+            height: settingsColumn.implicitHeight + Core.Theme.metrics.cardHeightPadding
             radius: Core.Theme.radius.card
-            color: Core.Theme.color.card
+            color: Core.Theme.color.hero
             border.color: Core.Theme.color.cardOutline
             Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
             Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
@@ -66,15 +66,13 @@ Item {
                 id: settingsColumn
                 z: 1
                 anchors.fill: parent
-                anchors.margins: Core.Theme.dp(18)
+                anchors.margins: Core.Theme.metrics.cardPadding
                 spacing: Core.Theme.dp(12)
 
                 Text { text: "设置"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.fontSize.title; font.family: Core.Theme.headingFontFamily; font.weight: Core.Theme.headingFontWeight; font.letterSpacing: Core.Theme.headingLetterSpacing }
                 Text { width: parent.width; text: "这些设置会保存在软件根目录下的本地 JSON 配置文件中。"; color: Core.Theme.color.mutedText; font.pixelSize: Core.Theme.fontSize.body; wrapMode: Text.WordWrap; lineHeight: Core.Theme.bodyLineHeight }
                 Text { width: parent.width; text: root.settingsPath(); color: Core.Theme.color.mutedText; font.pixelSize: Core.Theme.fontSize.caption; elide: Text.ElideRight }
 
-                AppCheckBox { text: "启用功能 A"; storageKey: "settings/featureA"; checked: true; autoLoad: true }
-                AppCheckBox { text: "启用功能 B"; storageKey: "settings/featureB"; autoLoad: true }
                 AppCheckBox {
                     text: "关闭窗口到托盘图标"
                     checked: root.appReady && App.tray ? App.tray.closeToTray : root.settingValue("window/closeToTray", root.settingValue("window/minimizeToTray", false))
@@ -114,17 +112,8 @@ Item {
                         stepSize: 5
                         tickCount: 10
                         value: Math.round(Core.Theme.fontScale * 100 / 5) * 5
-                        onMoved: fontCommitDelay.restart()
-                        onCommitted: {
-                            fontCommitDelay.stop()
-                            root.commitFontSlider()
-                        }
-                    }
-                    Timer {
-                        id: fontCommitDelay
-                        interval: 90
-                        repeat: false
-                        onTriggered: root.commitFontSlider()
+                        onMoved: root.commitFontSlider()
+                        onCommitted: root.commitFontSlider()
                     }
                     Connections { target: root.appReady && App.theme ? App.theme : null; function onFontScaleChanged(scale) { fontSlider.value = Math.round(scale * 100 / fontSlider.stepSize) * fontSlider.stepSize } }
                     Row {
@@ -155,19 +144,6 @@ Item {
                         onSaved: if (root.appReady && App.tray) App.tray.setIconPath(text)
                     }
                 }
-                Loader {
-                    id: projectPathInputLoader
-                    width: parent.width
-                    height: item ? item.height : Core.Theme.metrics.fieldHeight
-                    active: root.deferredControlsReady
-                    sourceComponent: AppTextField {
-                        width: projectPathInputLoader.width
-                        placeholderText: "默认项目路径"
-                        storageKey: "paths/defaultProject"
-                        autoLoad: true
-                    }
-                }
-
                 Flow {
                     width: parent.width
                     spacing: Core.Theme.dp(8)
@@ -176,9 +152,7 @@ Item {
                         text: "保存设置"
                         onClicked: {
                             if (!root.appReady || !App.settings) return
-                            const projectPathInput = projectPathInputLoader.item
                             const trayIconPathInput = trayIconPathInputLoader.item
-                            App.settings.setValue("paths/defaultProject", projectPathInput ? projectPathInput.text : root.settingValue("paths/defaultProject", ""))
                             App.settings.setValue("tray/iconPath", trayIconPathInput ? trayIconPathInput.text : root.settingValue("tray/iconPath", ""))
                             if (App.tray)
                                 App.tray.setIconPath(trayIconPathInput ? trayIconPathInput.text : root.settingValue("tray/iconPath", ""))
@@ -206,7 +180,7 @@ Item {
 
         Rectangle {
             width: parent.width
-            height: memoryColumn.implicitHeight + Core.Theme.dp(36)
+            height: memoryColumn.implicitHeight + Core.Theme.metrics.cardHeightPadding
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
             border.color: Core.Theme.color.cardOutline
@@ -221,7 +195,7 @@ Item {
                 id: memoryColumn
                 z: 1
                 anchors.fill: parent
-                anchors.margins: Core.Theme.dp(18)
+                anchors.margins: Core.Theme.metrics.cardPadding
                 spacing: Core.Theme.dp(12)
 
                 Text {
@@ -247,6 +221,15 @@ Item {
                 AppCheckBox {
                     width: parent.width
                     wrapText: true
+                    text: "自动清理热缓存（每 10 秒检查一次；低内存模式超过 120MB、普通模式超过 180MB 时清理）"
+                    storageKey: "performance/autoTrimMemory"
+                    checked: false
+                    autoLoad: true
+                }
+
+                AppCheckBox {
+                    width: parent.width
+                    wrapText: true
                     text: "独立子窗口启用置顶按钮（每个独立子窗口会额外增加约 3MB 内存占用量）"
                     storageKey: "performance/childWindowTopmostEnabled"
                     checked: false
@@ -257,7 +240,7 @@ Item {
 
         Rectangle {
             width: parent.width
-            height: developerColumn.implicitHeight + Core.Theme.dp(36)
+            height: developerColumn.implicitHeight + Core.Theme.metrics.cardHeightPadding
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
             border.color: Core.Theme.color.cardOutline
@@ -272,7 +255,7 @@ Item {
                 id: developerColumn
                 z: 1
                 anchors.fill: parent
-                anchors.margins: Core.Theme.dp(18)
+                anchors.margins: Core.Theme.metrics.cardPadding
                 spacing: Core.Theme.dp(12)
 
                 Text { text: "开发者选项"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.fontSize.subtitle; font.family: Core.Theme.headingFontFamily; font.weight: Core.Theme.headingFontWeight; font.letterSpacing: Core.Theme.headingLetterSpacing }

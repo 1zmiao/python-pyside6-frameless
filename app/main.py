@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, QObject, QEvent, QTimer, QUrl
-from PySide6.QtGui import QGuiApplication, QPixmapCache, QSurfaceFormat
+from PySide6.QtGui import QGuiApplication, QIcon, QPixmapCache, QSurfaceFormat
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickWindow, QSGRendererInterface
 from PySide6.QtQuickControls2 import QQuickStyle
@@ -41,6 +41,29 @@ def set_linux_process_name(name: str) -> None:
         libc = ctypes.CDLL(None)
         pr_set_name = 15
         libc.prctl(pr_set_name, name.encode("utf-8")[:15], 0, 0, 0)
+    except Exception:
+        pass
+
+
+def set_windows_app_user_model_id(app_id: str) -> None:
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(str(app_id))
+    except Exception:
+        pass
+
+
+def apply_application_icon(app: QGuiApplication, project_root: Path) -> None:
+    icon_path = project_root / "resources" / "app_icon.ico"
+    if not icon_path.exists():
+        return
+    try:
+        icon = QIcon(str(icon_path))
+        if not icon.isNull():
+            app.setWindowIcon(icon)
     except Exception:
         pass
 
@@ -406,6 +429,7 @@ def main() -> int:
     install_qt_message_logging()
     write_runtime_log("main starting")
     set_linux_process_name("QRoundedFrame")
+    set_windows_app_user_model_id("QRoundedFrame.Template")
 
     # Avoid stale compiled QML cache when users replace this template folder during development.
     os.environ.setdefault("QML_DISABLE_DISK_CACHE", "1")
@@ -434,12 +458,15 @@ def main() -> int:
         if os.environ.get("QROUNDEDFRAME_FORCE_SOFTWARE_QUICK", "").strip().lower() in {"1", "true", "yes"}:
             QQuickWindow.setGraphicsApi(QSGRendererInterface.GraphicsApi.Software)
 
+    project_root = runtime_root()
+
     if sys.platform == "win32" or linux_tray_enabled_by_settings():
         from PySide6.QtWidgets import QApplication
 
         app = QApplication(sys.argv)
     else:
         app = QGuiApplication(sys.argv)
+    apply_application_icon(app, project_root)
     write_runtime_log(f"application={type(app).__name__}")
 
     # Keep Qt's global pixmap cache bounded. The UI uses many small themed
@@ -463,7 +490,6 @@ def main() -> int:
         except Exception:
             pass
 
-    project_root = runtime_root()
     qml_dir = project_root / "qml"
 
     engine = QQmlApplicationEngine()

@@ -1,4 +1,4 @@
-import QtQuick
+﻿import QtQuick
 import "../core" as Core
 import "../controls"
 
@@ -25,13 +25,13 @@ Item {
 
     DragScrollArea {
         anchors.fill: parent
-        spacing: Core.Theme.dp(16)
+        spacing: Core.Theme.metrics.spacing
 
         Rectangle {
             width: parent.width
-            height: Math.max(Core.Theme.dp(220), updateContent.implicitHeight + Core.Theme.dp(36))
+            height: Math.max(Core.Theme.dp(220), updateContent.implicitHeight + Core.Theme.metrics.cardHeightPadding)
             radius: Core.Theme.radius.card
-            color: Core.Theme.color.card
+            color: Core.Theme.color.hero
             border.color: Core.Theme.color.cardOutline
             Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
             Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
@@ -43,7 +43,7 @@ Item {
                 id: updateContent
                 z: 1
                 anchors.fill: parent
-                anchors.margins: Core.Theme.dp(18)
+                anchors.margins: Core.Theme.metrics.cardPadding
                 spacing: Core.Theme.dp(10)
 
                 Text {
@@ -64,13 +64,19 @@ Item {
                     lineHeight: Core.Theme.bodyLineHeight
                 }
 
-                AppButton { text: "\u68c0\u67e5\u66f4\u65b0" }
+                Flow {
+                    width: parent.width
+                    spacing: Core.Theme.dp(8)
+                    AppCheckBox { text: "启用功能 A"; storageKey: "settings/featureA"; checked: true; autoLoad: true }
+                    AppCheckBox { text: "启用功能 B"; storageKey: "settings/featureB"; autoLoad: true }
+                    AppButton { text: "\u68c0\u67e5\u66f4\u65b0"; outlineGhost: true }
+                }
             }
         }
 
         Rectangle {
             width: parent.width
-            height: Math.max(Core.Theme.dp(156), memoryContent.implicitHeight + Core.Theme.dp(36))
+            height: Math.max(Core.Theme.dp(156), memoryContent.implicitHeight + Core.Theme.metrics.cardHeightPadding)
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
             border.color: Core.Theme.color.cardOutline
@@ -84,7 +90,7 @@ Item {
                 id: memoryContent
                 z: 1
                 anchors.fill: parent
-                anchors.margins: Core.Theme.dp(18)
+                anchors.margins: Core.Theme.metrics.cardPadding
                 spacing: Core.Theme.dp(8)
 
                 Text {

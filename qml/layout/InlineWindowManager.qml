@@ -260,9 +260,17 @@ Item {
     }
 
     function openPage(pageKey, title, props) {
-        const key = String(pageKey || "about")
+        const page = String(pageKey || "about")
+        const safeProps = props || ({})
+        const key = page === "task-edit" && safeProps.taskId !== undefined
+                    ? page + "-" + String(safeProps.taskId)
+                    : page
         const existing = windowsByKey[key]
         if (existing) {
+            if (safeProps.taskId !== undefined)
+                existing.taskId = Number(safeProps.taskId)
+            if (safeProps.taskType !== undefined)
+                existing.taskType = String(safeProps.taskType || "default")
             if (existing.minimized)
                 existing.restoreFromDock()
             raiseWindow(key)
@@ -274,7 +282,7 @@ Item {
             manager: root,
             pageKey: key,
             title: titleFor(key, title),
-            pageSource: pageSourceFor(key),
+            pageSource: pageSourceFor(page),
             width: w,
             height: h,
             x: Math.max(Core.Theme.dp(18), (root.width - w) / 2 + Object.keys(windowsByKey).length * Core.Theme.dp(18)),
@@ -283,6 +291,10 @@ Item {
         })
         if (!obj)
             return
+        if (safeProps.taskId !== undefined)
+            obj.taskId = Number(safeProps.taskId)
+        if (safeProps.taskType !== undefined)
+            obj.taskType = String(safeProps.taskType || "default")
         obj.closeRequested.connect(closePage)
         obj.minimizeRequested.connect(minimizePage)
         obj.restoreRequested.connect(restorePage)

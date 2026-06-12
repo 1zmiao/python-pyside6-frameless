@@ -687,10 +687,34 @@ bool NativeWidgetHostAgent::nativeEventFilter(const QByteArray &eventType, void 
 
     switch (msg->message) {
     case WM_NCHITTEST: {
+        LRESULT dwmResult = 0;
+        if (messageForHost && DwmDefWindowProc(hwnd, msg->message, msg->wParam, msg->lParam, &dwmResult)) {
+            if (dwmResult == HTREDUCE || dwmResult == HTZOOM || dwmResult == HTCLOSE) {
+                if (result)
+                    *result = dwmResult;
+                return true;
+            }
+        }
         const int hit = hitTest(msg->lParam);
         if (hit != 0) {
             if (result)
                 *result = hit;
+            return true;
+        }
+        break;
+    }
+    case WM_NCMOUSEMOVE:
+    case WM_NCMOUSELEAVE: {
+        LRESULT dwmResult = 0;
+        if (messageForHost && DwmDefWindowProc(hwnd, msg->message, msg->wParam, msg->lParam, &dwmResult)) {
+            if (result)
+                *result = dwmResult;
+            return true;
+        }
+        const int hitCode = int(msg->wParam & 0xFFFF);
+        if (messageForHost && (hitCode == HTREDUCE || hitCode == HTZOOM || hitCode == HTCLOSE)) {
+            if (result)
+                *result = DefWindowProcW(hwnd, msg->message, msg->wParam, msg->lParam);
             return true;
         }
         break;
@@ -840,14 +864,19 @@ QVariantMap NativeWidgetHostAgent::sanitizeButtonRect(const QVariantMap &value) 
 int NativeWidgetHostAgent::systemButtonHitTest(qreal localX, qreal localY) const
 {
 #ifdef Q_OS_WIN
-    auto contains = [localX, localY](const QVariantMap &rect) {
+    auto contains = [this, localX, localY](const QVariantMap &rect) {
         if (rect.isEmpty())
             return false;
-        const QRectF bounds(
-            rect.value(QStringLiteral("x")).toReal(),
-            rect.value(QStringLiteral("y")).toReal(),
-            rect.value(QStringLiteral("width")).toReal(),
-            rect.value(QStringLiteral("height")).toReal());
+        const qreal x = rect.value(QStringLiteral("x")).toReal();
+        const qreal width = rect.value(QStringLiteral("width")).toReal();
+        const qreal height = rect.value(QStringLiteral("height")).toReal();
+        const qreal y = m_titleBarHeight > height + 2.0
+                            ? 0.0
+                            : rect.value(QStringLiteral("y")).toReal();
+        const qreal effectiveHeight = m_titleBarHeight > height + 2.0
+                                          ? m_titleBarHeight
+                                          : height;
+        const QRectF bounds(x, y, width, effectiveHeight);
         return bounds.contains(QPointF(localX, localY));
     };
     if (contains(m_minimizeButtonRect))
@@ -856,6 +885,31 @@ int NativeWidgetHostAgent::systemButtonHitTest(qreal localX, qreal localY) const
         return HTZOOM;
     if (contains(m_closeButtonRect))
         return HTCLOSE;
+    const int inferredHit = inferredSystemButtonHitTest(localX, localY);
+    if (inferredHit != 0)
+        return inferredHit;
+#endif
+    return 0;
+}
+
+int NativeWidgetHostAgent::inferredSystemButtonHitTest(qreal localX, qreal localY) const
+{
+#ifdef Q_OS_WIN
+    if (localY < 0.0 || localY > m_titleBarHeight)
+        return 0;
+
+    const qreal buttonWidth = m_maximizeButtonRect.value(QStringLiteral("width"), 0.0).toReal();
+    const qreal buttonHeight = m_maximizeButtonRect.value(QStringLiteral("height"), 0.0).toReal();
+    const qreal closeX = m_closeButtonRect.value(QStringLiteral("x"), 0.0).toReal();
+    if (buttonWidth <= 8.0 || buttonHeight <= 8.0 || closeX <= 0.0)
+        return 0;
+
+    const QRectF inferredMaximize(closeX - buttonWidth, m_closeButtonRect.value(QStringLiteral("y"), 0.0).toReal(), buttonWidth, buttonHeight);
+    if (inferredMaximize.contains(QPointF(localX, localY)))
+        return HTZOOM;
+#else
+    Q_UNUSED(localX)
+    Q_UNUSED(localY)
 #endif
     return 0;
 }

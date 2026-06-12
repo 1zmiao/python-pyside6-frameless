@@ -481,13 +481,36 @@ bool ExternalShadowController::nativeEventFilter(const QByteArray &eventType, vo
             }
         }
         break;
-    case WM_WINDOWPOSCHANGED:
-    case WM_MOVE:
     case WM_SIZE:
+        if (hasNativeShadow) {
+            auto it = m_nativeShadowByTarget.find(targetId);
+            if (it != m_nativeShadowByTarget.end()) {
+                if (msg->wParam == SIZE_MINIMIZED) {
+                    // 外置 layered shadow 不属于主 HWND 的 DWM 最小化/还原动画。
+                    // 最小化时直接隐藏；从任务栏还原时再短淡入，避免阴影先在最终位置硬跳出。
+                    it.value().hiddenForMinimize = true;
+                    hideNativeShadowForMinimize(it.value());
+                    break;
+                }
+                if (it.value().hiddenForMinimize) {
+                    it.value().hiddenForMinimize = false;
+                    it.value().everShown = false;
+                    it.value().openingFadeScheduled = false;
+                    it.value().openingOpacityScale = 1.0;
+                }
+            }
+        }
         if (hasQmlShadow)
             syncRegisteredShadow(targetId, false);
         if (hasNativeShadow)
-            syncNativeRegisteredShadow(targetId, true, msg->message == WM_SIZE);
+            syncNativeRegisteredShadow(targetId, true, true);
+        break;
+    case WM_WINDOWPOSCHANGED:
+    case WM_MOVE:
+        if (hasQmlShadow)
+            syncRegisteredShadow(targetId, false);
+        if (hasNativeShadow)
+            syncNativeRegisteredShadow(targetId, true, false);
         break;
     case WM_EXITSIZEMOVE:
         if (hasNativeShadow) {
@@ -676,6 +699,10 @@ void ExternalShadowController::hideNativeShadow(NativeShadowState &state) {
     state.openingOpacityScale = 1.0;
     state.hidingFadeScheduled = false;
     state.hidingOpacityScale = 1.0;
+}
+
+void ExternalShadowController::hideNativeShadowForMinimize(NativeShadowState &state) {
+    hideNativeShadow(state);
 }
 
 void ExternalShadowController::destroyNativeShadowState(NativeShadowState &state) {

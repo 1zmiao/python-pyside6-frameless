@@ -37,7 +37,7 @@ Item {
         color: root.pressed ? Core.Theme.color.controlPressed : (root.hovered ? Core.Theme.color.controlHover : Core.Theme.color.field)
         border.color: root.hovered ? Core.Theme.color.fieldFocusBorder : Core.Theme.color.outline
         border.width: 1
-        Behavior on color { ColorAnimation { duration: Core.Theme.controlTransitionMs; easing.type: Easing.InOutCubic } }
+        Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
         Behavior on border.color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
     }
 
@@ -163,7 +163,7 @@ Item {
                                 anchors.fill: parent
                                 radius: Core.Theme.radius.button
                                 color: option.selected ? Core.Theme.color.navActive : (option.optionHovered ? Core.Theme.color.controlHover : Core.Theme.alpha(Core.Theme.color.controlHover, 0))
-                                Behavior on color { ColorAnimation { duration: Core.Theme.controlTransitionMs; easing.type: Easing.InOutCubic } }
+                                Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
                             }
 
                             Text {

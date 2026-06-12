@@ -17,7 +17,79 @@ def current_process_memory() -> dict[str, float]:
         sample = _windows_current_process_memory()
         if sample:
             return sample
+    if sys.platform.startswith("linux"):
+        sample = _linux_current_process_memory()
+        if sample:
+            return sample
     return {"rss": 0.0, "private": 0.0}
+
+
+def _linux_current_process_memory() -> dict[str, float] | None:
+    try:
+        rollup = _read_linux_smaps_rollup()
+        if rollup:
+            rss = rollup.get("Rss", 0)
+            private_clean = rollup.get("Private_Clean", 0)
+            private_dirty = rollup.get("Private_Dirty", 0)
+            private_hugetlb = rollup.get("Private_Hugetlb", 0)
+            uss = private_clean + private_dirty + private_hugetlb
+            pss = rollup.get("Pss", 0)
+            return {
+                "rss": round(rss / 1024.0, 1),
+                "private": round(uss / 1024.0, 1),
+                "uss": round(uss / 1024.0, 1),
+                "pss": round(pss / 1024.0, 1),
+                # The QML page uses the Windows name for a user-facing private
+                # resident value. On Linux the closest honest equivalent is USS.
+                "ws_private": round(uss / 1024.0, 1),
+            }
+        statm = PathLikeProcStatm.read()
+        if statm:
+            return statm
+    except Exception:
+        return None
+    return None
+
+
+def _read_linux_smaps_rollup() -> dict[str, int] | None:
+    try:
+        values: dict[str, int] = {}
+        with open("/proc/self/smaps_rollup", "r", encoding="utf-8", errors="replace") as file:
+            for line in file:
+                if ":" not in line:
+                    continue
+                key, raw_value = line.split(":", 1)
+                parts = raw_value.strip().split()
+                if not parts:
+                    continue
+                try:
+                    values[key] = int(parts[0])
+                except ValueError:
+                    continue
+        return values
+    except Exception:
+        return None
+
+
+class PathLikeProcStatm:
+    @staticmethod
+    def read() -> dict[str, float] | None:
+        try:
+            with open("/proc/self/statm", "r", encoding="utf-8", errors="replace") as file:
+                parts = file.read().strip().split()
+            if len(parts) < 2:
+                return None
+            page_size = os.sysconf("SC_PAGE_SIZE")
+            rss = int(parts[1]) * int(page_size)
+            return {
+                "rss": mb(rss),
+                "private": 0.0,
+                "uss": 0.0,
+                "pss": 0.0,
+                "ws_private": 0.0,
+            }
+        except Exception:
+            return None
 
 
 def _windows_current_process_memory() -> dict[str, float] | None:

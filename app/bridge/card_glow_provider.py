@@ -67,7 +67,7 @@ class CardGlowImageProvider(QQuickImageProvider):
         top_glow_w = width
         top_glow_h = max(_scaled_px(72, render_scale_y), min(int(height * 0.52), _scaled_px(210, render_scale_y)))
         top_glow_rect = QRectF(0, 0, top_glow_w, top_glow_h)
-        painter.setOpacity(0.75 if mode == "light" else 0.51)
+        painter.setOpacity(0.90 if mode == "light" else 0.51)
         painter.drawImage(top_glow_rect, glow.mirrored(True, True))
 
         rim_h = max(_scaled_px(5, render_scale_y), min(_scaled_px(12, render_scale_y), int(height * 0.045)))
@@ -113,8 +113,10 @@ class CardGlowImageProvider(QQuickImageProvider):
         painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
         painter.setRenderHint(QPainter.Antialiasing, True)
         color_key = _normalize_hex(color)
-        painter.setOpacity(_low_resolution_opacity_compensation(min(render_scale_x, render_scale_y)))
+        opacity_compensation = _low_resolution_opacity_compensation(min(render_scale_x, render_scale_y))
+        painter.setOpacity(opacity_compensation * 0.5)
         painter.drawImage(0, 0, _tinted_side_glow_template(mode, color_key, width, height))
+        painter.setOpacity(opacity_compensation)
         painter.drawImage(0, 0, _tinted_side_rim_template(mode, color_key, width, height))
         painter.end()
         return image
@@ -270,7 +272,7 @@ def _side_glow_template(width: int, height: int, mode: str) -> QImage:
     height = max(1, min(1400, int(height)))
     image = QImage(width, height, QImage.Format_ARGB32)
     image.fill(Qt.transparent)
-    strength = 82 if mode == "light" else 58
+    strength = 82 if mode == "light" else 72
 
     for y in range(height):
         yn = y / max(1, height - 1)
@@ -295,7 +297,7 @@ def _side_rim_template(width: int, height: int, mode: str) -> QImage:
     height = max(1, min(1400, int(height)))
     image = QImage(width, height, QImage.Format_ARGB32)
     image.fill(Qt.transparent)
-    strength = 160 if mode == "light" else 122
+    strength = 160 if mode == "light" else 148
 
     for y in range(height):
         yn = y / max(1, height - 1)

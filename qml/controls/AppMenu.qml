@@ -16,6 +16,7 @@ Popup {
     property double _closedAt: 0
     property string _closedActionName: ""
     property bool _suppressCloseStamp: false
+    signal actionPrepared(string action, string kind)
     signal actionTriggered(string action, string kind)
 
     onClosed: {
@@ -73,6 +74,7 @@ Popup {
         MenuRow {
             width: parent.width
             iconName: root.isAboutMenu() ? "about" : "dialog"
+            onPrepared: root.actionPrepared(root.actionName, "child")
             text: root.isAboutMenu() ? "关于" : "打开子窗口"
             subText: root.isAboutMenu() ? "打开独立说明面板" : "打开独立无边框子窗口"
             onTriggered: {
@@ -99,6 +101,7 @@ Popup {
         property string text: ""
         property string subText: ""
         property bool hovered: mouse.containsMouse
+        signal prepared()
         signal triggered()
 
         height: Core.Theme.dp(42)
@@ -143,6 +146,8 @@ Popup {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
+            onEntered: row.prepared()
+            onPressed: row.prepared()
             onClicked: row.triggered()
         }
     }

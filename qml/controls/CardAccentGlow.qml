@@ -19,18 +19,30 @@ Item {
     property int renderStep: liveResizeLowResolution ? 128 : (lowMemoryVisuals ? 64 : 48)
     property int pixelWidth: Math.max(24, Math.round((width * renderScaleX) / renderStep) * renderStep)
     property int pixelHeight: Math.max(24, Math.round((height * renderScaleY) / renderStep) * renderStep)
-    property int pixelRadius: Math.max(0, Math.round(radius * Math.min(renderScaleX, renderScaleY)))
+    property int pixelRadius: Math.max(0, Math.round(radius))
     property bool glowSwapPending: false
     property string pendingImageSource: ""
     property bool diagnosticDisabled: typeof App !== "undefined"
                                       && App
                                       && String(App.envValue("QROUNDEDFRAME_DISABLE_CARD_ACCENT_GLOW")).toLowerCase() === "1"
+    property bool effectEnabled: Core.Theme.decorativeEffectsEnabled && !diagnosticDisabled && width > 0 && height > 0
 
     anchors.fill: parent
-    visible: !diagnosticDisabled && width > 0 && height > 0
+    visible: effectEnabled
 
     function imageName() {
         return "image://cardaccent/card/" + root.modeKey + "/" + root.liveHex + "/" + root.pixelRadius + "/" + root.pixelWidth + "x" + root.pixelHeight + "/" + root.renderScaleX.toFixed(3) + "x" + root.renderScaleY.toFixed(3)
+    }
+
+    function unloadImages() {
+        currentFade.stop()
+        nextFade.stop()
+        currentImage.source = ""
+        nextImage.source = ""
+        currentImage.opacity = 1.0
+        nextImage.opacity = 0.0
+        root.pendingImageSource = ""
+        root.glowSwapPending = false
     }
 
     Item {
@@ -68,6 +80,12 @@ Item {
 
         Connections {
             target: root
+            function onEffectEnabledChanged() {
+                if (root.effectEnabled)
+                    root.updateSizeOnly()
+                else
+                    root.unloadImages()
+            }
             function onLiveHexChanged() { root.updateSizeOnly() }
             function onModeKeyChanged() { root.scheduleGlowSwap() }
             function onPixelWidthChanged() { if (!root.liveResizeLowResolution) root.updateSizeOnly() }
@@ -165,10 +183,6 @@ Item {
     }
 
     Component.onDestruction: {
-        currentFade.stop()
-        nextFade.stop()
-        currentImage.source = ""
-        nextImage.source = ""
-        root.pendingImageSource = ""
+        root.unloadImages()
     }
 }

@@ -5,15 +5,13 @@ import "../controls"
 Item {
     id: root
 
-    readonly property int cardPadding: Core.Theme.dp(18)
-
     DragScrollArea {
         anchors.fill: parent
-        spacing: Core.Theme.dp(14)
+        spacing: Core.Theme.metrics.spacing
 
         Rectangle {
             width: parent.width
-            height: Math.max(Core.Theme.dp(154), heroContent.implicitHeight + root.cardPadding * 2)
+            height: Math.max(Core.Theme.dp(154), heroContent.implicitHeight + Core.Theme.metrics.cardHeightPadding)
             radius: Core.Theme.radius.card
             color: Core.Theme.color.hero
             border.color: Core.Theme.color.cardOutline
@@ -27,7 +25,7 @@ Item {
                 id: heroContent
                 z: 1
                 anchors.fill: parent
-                anchors.margins: root.cardPadding
+                anchors.margins: Core.Theme.metrics.cardPadding
                 spacing: Core.Theme.dp(8)
 
                 Text {
@@ -52,7 +50,7 @@ Item {
 
         Rectangle {
             width: parent.width
-            height: behaviorContent.implicitHeight + root.cardPadding * 2
+            height: behaviorContent.implicitHeight + Core.Theme.metrics.cardHeightPadding
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
             border.color: Core.Theme.color.cardOutline
@@ -66,7 +64,7 @@ Item {
                 id: behaviorContent
                 z: 1
                 anchors.fill: parent
-                anchors.margins: root.cardPadding
+                anchors.margins: Core.Theme.metrics.cardPadding
                 spacing: Core.Theme.dp(9)
 
                 Text { text: "窗口策略"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.sp(18); font.family: Core.Theme.headingFontFamily; font.weight: Core.Theme.headingFontWeight; font.letterSpacing: Core.Theme.headingLetterSpacing }
@@ -93,7 +91,7 @@ Item {
 
         Rectangle {
             width: parent.width
-            height: advantageContent.implicitHeight + root.cardPadding * 2
+            height: advantageContent.implicitHeight + Core.Theme.metrics.cardHeightPadding
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
             border.color: Core.Theme.color.cardOutline
@@ -107,7 +105,7 @@ Item {
                 id: advantageContent
                 z: 1
                 anchors.fill: parent
-                anchors.margins: root.cardPadding
+                anchors.margins: Core.Theme.metrics.cardPadding
                 spacing: Core.Theme.dp(9)
 
                 Text { text: "设计重点"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.sp(18); font.family: Core.Theme.headingFontFamily; font.weight: Core.Theme.headingFontWeight; font.letterSpacing: Core.Theme.headingLetterSpacing }
@@ -125,7 +123,7 @@ Item {
 
         Rectangle {
             width: parent.width
-            height: performanceContent.implicitHeight + root.cardPadding * 2
+            height: performanceContent.implicitHeight + Core.Theme.metrics.cardHeightPadding
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
             border.color: Core.Theme.color.cardOutline
@@ -139,7 +137,7 @@ Item {
                 id: performanceContent
                 z: 1
                 anchors.fill: parent
-                anchors.margins: root.cardPadding
+                anchors.margins: Core.Theme.metrics.cardPadding
                 spacing: Core.Theme.dp(9)
 
                 Text { text: "性能与低内存"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.sp(18); font.family: Core.Theme.headingFontFamily; font.weight: Core.Theme.headingFontWeight; font.letterSpacing: Core.Theme.headingLetterSpacing }
@@ -157,7 +155,7 @@ Item {
 
         Rectangle {
             width: parent.width
-            height: extensionContent.implicitHeight + root.cardPadding * 2
+            height: extensionContent.implicitHeight + Core.Theme.metrics.cardHeightPadding
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
             border.color: Core.Theme.color.cardOutline
@@ -171,7 +169,7 @@ Item {
                 id: extensionContent
                 z: 1
                 anchors.fill: parent
-                anchors.margins: root.cardPadding
+                anchors.margins: Core.Theme.metrics.cardPadding
                 spacing: Core.Theme.dp(9)
 
                 Text { text: "扩展入口"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.sp(18); font.family: Core.Theme.headingFontFamily; font.weight: Core.Theme.headingFontWeight; font.letterSpacing: Core.Theme.headingLetterSpacing }

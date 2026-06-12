@@ -118,12 +118,37 @@ class TrayController(QObject):
     @Slot(int, int, int, int, result=bool)
     def mousePressedOutside(self, x: int, y: int, w: int, h: int) -> bool:
         try:
-            if not bool(QGuiApplication.mouseButtons()):
+            if not self._mouse_press_seen():
                 return False
             pos = QCursor.pos()
             return not (int(x) <= pos.x() <= int(x) + int(w) and int(y) <= pos.y() <= int(y) + int(h))
         except Exception:
             return False
+
+    @Slot()
+    def resetMousePressEdge(self) -> None:
+        self._consume_mouse_press_edge()
+
+    def _mouse_press_seen(self) -> bool:
+        if bool(QGuiApplication.mouseButtons()):
+            return True
+        if sys.platform != "win32":
+            return False
+        return self._consume_mouse_press_edge()
+
+    def _consume_mouse_press_edge(self) -> bool:
+        if sys.platform != "win32":
+            return False
+        try:
+            # GetAsyncKeyState 的低位表示自上次查询后是否按过。托盘右键经常
+            # 不会让 QML 菜单失活，用这个边沿状态补齐“快速右键再松开”的关闭判定。
+            user32 = ctypes.windll.user32
+            for vk in (0x01, 0x02, 0x04, 0x05, 0x06):
+                if int(user32.GetAsyncKeyState(vk)) & 0x0001:
+                    return True
+        except Exception:
+            return False
+        return False
 
     @Slot(int, int, result="QVariant")
     def availableGeometryAt(self, x: int, y: int):

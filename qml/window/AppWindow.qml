@@ -79,6 +79,8 @@ Window {
     property string pendingTransitionMode: ""
     property real pendingTransitionX: 0
     property real pendingTransitionY: 0
+    property bool firstFrameReady: false
+    property bool firstFrameOpacityGate: root.windowKey === "main" && Qt.platform.os === "windows"
 
     signal windowEvent(string type, var payload)
     signal requestThemeToggle(point localPos, string nextMode)
@@ -93,6 +95,7 @@ Window {
            | Qt.WindowCloseButtonHint
     color: Qt.platform.os === "windows" ? Core.Theme.color.surface : "transparent"
     visible: false
+    opacity: root.firstFrameOpacityGate && !root.firstFrameReady ? 0 : 1
 
     Component.onCompleted: {
         root.registerNativeChrome()
@@ -106,6 +109,11 @@ Window {
 
     NativeWindowAgent {
         id: nativeAgent
+        onNativeSystemButtonHoverChanged: function(role) {
+            titleBarControl.minimizeButtonNativeHovered = role === "minimize"
+            titleBarControl.maximizeButtonNativeHovered = role === "maximize"
+            titleBarControl.closeButtonNativeHovered = role === "close"
+        }
     }
 
     ExternalShadowController {
@@ -577,6 +585,7 @@ Window {
         root.scheduleNativeShadowShow()
     }
     onFrameSwapped: {
+        root.firstFrameReady = true
         root.markNativeShadowDisplayReady()
     }
     onCornerRadiusChanged: {

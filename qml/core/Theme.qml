@@ -12,6 +12,8 @@ QtObject {
     property real controlScale: Math.max(0.90, Math.min(1.24, fontScale))
     property bool showColorButton: (typeof App !== "undefined" && App && App.theme) ? App.theme.showColorButton : true
     property bool lowMemoryMode: (typeof App !== "undefined" && App && App.performance) ? App.performance.lowMemoryMode : false
+    property bool disableLightDecorativeEffects: true
+    property bool decorativeEffectsEnabled: !(disableLightDecorativeEffects && mode === "light")
     // Prefer platform fonts at startup. Bundled CJK fonts noticeably increase
     // the base RSS of the main QML window, so the template keeps system fonts
     // by default.
@@ -80,9 +82,10 @@ QtObject {
         property int windowShadowMargin: Math.max(32, theme.dp(38))
         property real windowShadowOpacityDark: 0.68
         property real windowShadowOpacityLight: 0.46
-        property int pagePadding: Math.max(14, theme.dp(18))
-        property int cardPadding: theme.dp(18)
-        property int spacing: theme.dp(12)
+        property int pagePadding: Math.max(12, theme.dp(14))
+        property int cardPadding: theme.dp(14)
+        property int cardHeightPadding: cardPadding * 2
+        property int spacing: theme.dp(10)
     }
 
     property QtObject fontSize: QtObject {

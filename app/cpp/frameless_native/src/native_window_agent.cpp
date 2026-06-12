@@ -34,6 +34,7 @@ static int nativeCornerRadiusPx(int radius, HWND hwnd) {
     const int inwardBias = qBound(1, scaledRadius / 6, 3);
     return qMax(1, scaledRadius - inwardBias);
 }
+
 #endif
 
 NativeWindowAgent::NativeWindowAgent(QObject *parent)
@@ -267,13 +268,84 @@ bool NativeWindowAgent::nativeEventFilter(const QByteArray &eventType, void *mes
     if (msg->message == WM_NCHITTEST) {
         const int hit = nativeSystemButtonHitTest(msg->lParam);
         if (hit != HTNOWHERE) {
+            setNativeSystemButtonHover(hit);
             if (result)
                 *result = hit;
             return true;
         }
+        LRESULT dwmResult = 0;
+        if (msg->hwnd == hwnd && DwmDefWindowProc(hwnd, msg->message, msg->wParam, msg->lParam, &dwmResult)) {
+            if (dwmResult == HTREDUCE || dwmResult == HTZOOM || dwmResult == HTCLOSE) {
+                setNativeSystemButtonHover(int(dwmResult));
+                if (result)
+                    *result = dwmResult;
+                return true;
+            }
+        }
     }
 
     switch (msg->message) {
+    case WM_NCLBUTTONDOWN: {
+        const int hit = nativeSystemButtonHitTest(msg->lParam);
+        if (msg->hwnd == hwnd && (hit == HTREDUCE || hit == HTZOOM || hit == HTCLOSE)) {
+            setNativeSystemButtonHover(hit);
+            m_pressedNativeButtonHit = hit;
+            if (result)
+                *result = 0;
+            return true;
+        }
+        m_pressedNativeButtonHit = 0;
+        break;
+    }
+    case WM_NCLBUTTONUP: {
+        const int pressedHit = m_pressedNativeButtonHit;
+        m_pressedNativeButtonHit = 0;
+        if (msg->hwnd == hwnd && (pressedHit == HTREDUCE || pressedHit == HTZOOM || pressedHit == HTCLOSE)) {
+            const int releaseHit = nativeSystemButtonHitTest(msg->lParam);
+            if (releaseHit == pressedHit) {
+                if (pressedHit == HTREDUCE) {
+                    ShowWindow(hwnd, SW_MINIMIZE);
+                } else if (pressedHit == HTZOOM) {
+                    const WPARAM command = IsZoomed(hwnd) ? SC_RESTORE : SC_MAXIMIZE;
+                    SendMessageW(hwnd, WM_SYSCOMMAND, command, 0);
+                } else if (pressedHit == HTCLOSE) {
+                    SendMessageW(hwnd, WM_SYSCOMMAND, SC_CLOSE, 0);
+                }
+            }
+            if (result)
+                *result = 0;
+            return true;
+        }
+        break;
+    }
+    case WM_LBUTTONUP:
+    case WM_CANCELMODE:
+    case WM_CAPTURECHANGED:
+        m_pressedNativeButtonHit = 0;
+        break;
+    case WM_MOUSEMOVE:
+        setNativeSystemButtonHover(HTNOWHERE);
+        break;
+    case WM_NCMOUSEMOVE:
+    case WM_NCMOUSELEAVE: {
+        if (msg->message == WM_NCMOUSELEAVE)
+            setNativeSystemButtonHover(HTNOWHERE);
+        LRESULT dwmResult = 0;
+        if (msg->hwnd == hwnd && DwmDefWindowProc(hwnd, msg->message, msg->wParam, msg->lParam, &dwmResult)) {
+            if (result)
+                *result = dwmResult;
+            return true;
+        }
+        const int hitCode = int(msg->wParam & 0xFFFF);
+        if (msg->hwnd == hwnd && (hitCode == HTREDUCE || hitCode == HTZOOM || hitCode == HTCLOSE)
+            && nativeSystemButtonHitTest(msg->lParam) == hitCode) {
+            setNativeSystemButtonHover(hitCode);
+            if (result)
+                *result = DefWindowProcW(hwnd, msg->message, msg->wParam, msg->lParam);
+            return true;
+        }
+        break;
+    }
     case WM_NCCALCSIZE:
         if (m_customShadow && msg->hwnd == hwnd && msg->wParam) {
             // 自定义圆角 + Qt Quick live resize 时，新增客户区如果不让 Windows 失效重绘，
@@ -597,11 +669,11 @@ int NativeWindowAgent::nativeSystemButtonHitTest(qintptr lParam) const {
             }
         }
     }
-    if (nativeItemContainsScreenPoint(m_minimizeButton, lParam))
+    if (nativeItemContainsScreenPoint(m_minimizeButton, lParam, true))
         return HTREDUCE;
-    if (nativeItemContainsScreenPoint(m_maximizeButton, lParam))
+    if (nativeItemContainsScreenPoint(m_maximizeButton, lParam, true))
         return HTZOOM;
-    if (nativeItemContainsScreenPoint(m_closeButton, lParam))
+    if (nativeItemContainsScreenPoint(m_closeButton, lParam, true))
         return HTCLOSE;
 #else
     Q_UNUSED(lParam)
@@ -609,7 +681,32 @@ int NativeWindowAgent::nativeSystemButtonHitTest(qintptr lParam) const {
     return 0;
 }
 
+QString NativeWindowAgent::systemButtonRoleForHit(int hit) const {
+#ifdef Q_OS_WIN
+    if (hit == HTREDUCE)
+        return QStringLiteral("minimize");
+    if (hit == HTZOOM)
+        return QStringLiteral("maximize");
+    if (hit == HTCLOSE)
+        return QStringLiteral("close");
+#else
+    Q_UNUSED(hit)
+#endif
+    return QString();
+}
+
+void NativeWindowAgent::setNativeSystemButtonHover(int hit) {
+    if (m_hoveredNativeButtonHit == hit)
+        return;
+    m_hoveredNativeButtonHit = hit;
+    emit nativeSystemButtonHoverChanged(systemButtonRoleForHit(hit));
+}
+
 bool NativeWindowAgent::nativeItemContainsScreenPoint(QQuickItem *item, qintptr lParam) const {
+    return nativeItemContainsScreenPoint(item, lParam, false);
+}
+
+bool NativeWindowAgent::nativeItemContainsScreenPoint(QQuickItem *item, qintptr lParam, bool extendToTitleBarHeight) const {
 #ifdef Q_OS_WIN
     if (!m_window || !item || !item->isVisible() || !item->isEnabled())
         return false;
@@ -617,6 +714,14 @@ bool NativeWindowAgent::nativeItemContainsScreenPoint(QQuickItem *item, qintptr 
     QRectF rect(topLeft, item->size());
     if (rect.isEmpty())
         return false;
+    if (extendToTitleBarHeight && m_titleBarItem) {
+        const QPointF titleTopLeft = m_titleBarItem->mapToScene(QPointF(0.0, 0.0));
+        const QSizeF titleSize = m_titleBarItem->size();
+        if (titleSize.height() > rect.height() + 2.0) {
+            rect.setTop(titleTopLeft.y());
+            rect.setHeight(titleSize.height());
+        }
+    }
     const qreal dpr = qMax<qreal>(1.0, m_window->devicePixelRatio());
     POINT local = {
         LONG(qRound(rect.left() * dpr)),

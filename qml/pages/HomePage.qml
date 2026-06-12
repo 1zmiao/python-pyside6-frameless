@@ -1,4 +1,4 @@
-import QtQuick
+﻿import QtQuick
 import "../core" as Core
 import "../controls"
 
@@ -38,11 +38,11 @@ Item {
 
     DragScrollArea {
         anchors.fill: parent
-        spacing: Core.Theme.dp(16)
+        spacing: Core.Theme.metrics.spacing
 
         Rectangle {
             width: parent.width
-            height: Math.max(Core.Theme.dp(164), heroContent.implicitHeight + Core.Theme.dp(36))
+            height: Math.max(Core.Theme.dp(164), heroContent.implicitHeight + Core.Theme.metrics.cardHeightPadding)
             radius: Core.Theme.radius.card
             color: Core.Theme.color.hero
             border.color: Core.Theme.color.cardOutline
@@ -56,7 +56,7 @@ Item {
                 id: heroContent
                 z: 1
                 anchors.fill: parent
-                anchors.margins: Core.Theme.dp(18)
+                anchors.margins: Core.Theme.metrics.cardPadding
                 spacing: Core.Theme.dp(8)
                 Text {
                     text: "跨平台圆角窗口引擎"
@@ -89,7 +89,7 @@ Item {
 
         Rectangle {
             width: parent.width
-            height: Math.max(Core.Theme.dp(292), storageContent.implicitHeight + Core.Theme.dp(36))
+            height: Math.max(Core.Theme.dp(292), storageContent.implicitHeight + Core.Theme.metrics.cardHeightPadding)
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
             border.color: Core.Theme.color.cardOutline
@@ -103,7 +103,7 @@ Item {
                 id: storageContent
                 z: 1
                 anchors.fill: parent
-                anchors.margins: Core.Theme.dp(18)
+                anchors.margins: Core.Theme.metrics.cardPadding
                 spacing: Core.Theme.dp(10)
                 Text { text: "明文与密文存储"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.sp(18); font.family: Core.Theme.headingFontFamily; font.weight: Core.Theme.headingFontWeight; font.letterSpacing: Core.Theme.headingLetterSpacing }
                 Text {
@@ -148,7 +148,7 @@ Item {
 
         Rectangle {
             width: parent.width
-            height: Math.max(Core.Theme.dp(238), performanceContent.implicitHeight + Core.Theme.dp(36))
+            height: Math.max(Core.Theme.dp(238), performanceContent.implicitHeight + Core.Theme.metrics.cardHeightPadding)
             radius: Core.Theme.radius.card
             color: Core.Theme.color.card
             border.color: Core.Theme.color.cardOutline
@@ -162,7 +162,7 @@ Item {
                 id: performanceContent
                 z: 1
                 anchors.fill: parent
-                anchors.margins: Core.Theme.dp(18)
+                anchors.margins: Core.Theme.metrics.cardPadding
                 spacing: Core.Theme.dp(12)
                 Text { text: "面向低内存设备的资源策略"; color: Core.Theme.color.text; font.pixelSize: Core.Theme.sp(18); font.family: Core.Theme.headingFontFamily; font.weight: Core.Theme.headingFontWeight; font.letterSpacing: Core.Theme.headingLetterSpacing }
                 Text {

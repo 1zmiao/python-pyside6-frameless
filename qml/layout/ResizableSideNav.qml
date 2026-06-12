@@ -29,6 +29,22 @@ Item {
     property string currentSideGlowSource: sideGlowSource(sideGlowModeKey, sideGlowHex)
     property string pendingSideGlowSource: ""
     property bool sideGlowSwapping: false
+    property string pendingIntentPage: ""
+
+    signal pageIntent(string page)
+
+    function queuePageIntent(page) {
+        pendingIntentPage = String(page || "")
+        if (pendingIntentPage.length > 0)
+            pageIntentDelay.restart()
+    }
+
+    function cancelPageIntent(page) {
+        if (pendingIntentPage === String(page || "")) {
+            pageIntentDelay.stop()
+            pendingIntentPage = ""
+        }
+    }
 
     function sideGlowSource(mode, hex) {
         return "image://cardaccent/side/" + mode + "/" + hex + "/" + root.cornerRadius + "/" + root.sideGlowPixelWidth + "x" + root.sideGlowPixelHeight + "/" + root.sideGlowRenderScaleX.toFixed(3) + "x" + root.sideGlowRenderScaleY.toFixed(3)
@@ -70,7 +86,7 @@ Item {
     }
 
     function sideGlowOpacityForMode(mode) {
-        return mode === "dark" ? 0.96 : 0.83
+        return 1.0
     }
 
     function persistWidthLater() {
@@ -222,6 +238,17 @@ Item {
         function onModeChanged(mode) { root.swapSideGlow(mode) }
     }
 
+    Timer {
+        id: pageIntentDelay
+        interval: 120
+        repeat: false
+        onTriggered: {
+            if (root.pendingIntentPage.length > 0)
+                root.pageIntent(root.pendingIntentPage)
+            root.pendingIntentPage = ""
+        }
+    }
+
     Column {
         id: navColumn
         anchors.left: parent.left
@@ -301,15 +328,21 @@ Item {
         }
 
         Rectangle {
-            visible: item.selected && !item.compact
-            width: 4
-            height: Core.Theme.dp(20)
-            radius: 2
+            visible: !item.compact
+            width: item.selected ? Core.Theme.dp(4) : Core.Theme.dp(2)
+            height: item.selected ? Core.Theme.dp(20) : Core.Theme.dp(13)
+            radius: width / 2
             anchors.left: parent.left
             anchors.leftMargin: 4
             anchors.verticalCenter: parent.verticalCenter
-            color: Core.Theme.mode === "dark" ? Qt.lighter(Core.Theme.primary, 1.85) : Core.Theme.primary
-            opacity: Core.Theme.mode === "dark" ? 1.0 : 0.95
+            color: item.selected
+                   ? (Core.Theme.mode === "dark" ? Qt.lighter(Core.Theme.primary, 1.95) : Core.Theme.primary)
+                   : (Core.Theme.mode === "dark"
+                      ? Core.Theme.alpha(Qt.lighter(Core.Theme.primary, 1.65), mouse.containsMouse ? 0.62 : 0.40)
+                      : Core.Theme.alpha(Core.Theme.primary, mouse.containsMouse ? 0.46 : 0.28))
+            opacity: item.selected || mouse.containsMouse ? 1.0 : 0.72
+            Behavior on width { NumberAnimation { duration: Core.Theme.controlTransitionMs; easing.type: Easing.OutCubic } }
+            Behavior on height { NumberAnimation { duration: Core.Theme.controlTransitionMs; easing.type: Easing.OutCubic } }
             Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
             Behavior on opacity { NumberAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
         }
@@ -338,6 +371,14 @@ Item {
             Behavior on color { ColorAnimation { duration: Core.Theme.animatedColorTransitionMs; easing.type: Easing.InOutCubic } }
         }
 
-        MouseArea { id: mouse; anchors.fill: parent; hoverEnabled: true; onClicked: root.currentPage = item.page }
+        MouseArea {
+            id: mouse
+            anchors.fill: parent
+            hoverEnabled: true
+            onEntered: root.queuePageIntent(item.page)
+            onExited: root.cancelPageIntent(item.page)
+            onPressed: root.pageIntent(item.page)
+            onClicked: root.currentPage = item.page
+        }
     }
 }

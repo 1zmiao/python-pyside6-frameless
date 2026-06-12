@@ -1,202 +1,17 @@
-# Linux 窗口策略测试交接
+# Linux 窗口策略测试与交接说明
 
-这份文档用于在 Linux 虚拟机里测试 QRoundedFrame 的窗口行为，并把测试通过的桌面环境加入自定义无边框白名单。
+这份文档用于从 Windows 版本切到 Linux 版本时交接窗口行为、阴影、内存口径和编译事项。当前 Windows 版本已经告一段落；Linux 版本不要照搬 Windows 的窗口壳修补历史，要按 Linux 桌面环境逐项验证。
 
-## 当前策略
+## 当前结论
 
-Windows 版已经稳定，Linux 目前默认走保守策略：
+- Windows 侧已经走稳定的 C++/QWindowKit 主窗口壳 + 外置 helper 阴影，不要为了 Linux 回头改 Windows 已稳定线路。
+- Linux 默认仍走保守策略：优先系统窗口行为；只有明确测试通过的桌面/窗口管理器才启用 custom chrome。
+- Linux 的自定义阴影问题和 Windows 不是一类问题。Windows 可通过 Win32 HWND 层级、DWM、SetWindowPos 等控制；Linux 受 X11/Wayland、窗口管理器、合成器策略影响更大。
+- 如果 Linux custom chrome 仍使用外置阴影窗口，需要重点验证阴影层级、跨屏/出屏行为、缩放左上角时阴影右侧和底部抖动。
 
-- Linux 默认使用系统标题栏和系统窗口行为。
-- 不默认启用自定义无边框、外置阴影和圆角裁剪。
-- 只有显式强制或命中白名单后，才启用 Linux custom chrome。
+## 是否需要重新编译
 
-Windows 策略补充：
-
-- Windows 10 默认走自定义圆角/外置阴影。
-- Windows 11 默认信任系统圆角和系统阴影，即使运行在普通虚拟机里也不再仅凭 `vmware/virtualbox/hyper-v` 标记强制 custom。
-- 如果 Win11 虚拟机确实没有系统圆角，可用 `FRAMELESS_WINDOWS_VM_CUSTOM_CHROME=1` 或 `FRAMELESS_FORCE_CUSTOM_CHROME=1` 强制测试自定义窗口。
-- `Microsoft Basic Display`、Remote Display、Virtual Display 这类明显 fallback 显示环境仍会自动启用 custom。
-
-相关代码在：
-
-```text
-app/window_policy.py
-```
-
-当前白名单入口：
-
-```python
-LINUX_CUSTOM_CHROME_WM_ALLOWLIST: set[str] = set()
-```
-
-默认空列表表示所有 Linux 桌面都先走系统窗口。后续某个窗口管理器测试通过后，只需要把 token 加进去，例如：
-
-```python
-LINUX_CUSTOM_CHROME_WM_ALLOWLIST: set[str] = {"xfwm4"}
-```
-
-不要先预设一堆桌面环境。建议“测试一个，加一个”。
-
-## 建议测试顺序
-
-优先测试这些组合：
-
-```text
-1. GNOME Wayland
-   Debian/Ubuntu 默认路线。预期：保守回退系统标题栏。
-
-2. GNOME on Xorg
-   预期：先保守回退；可强制 custom 做对比。
-
-3. XFCE / xfwm4
-   最适合优先测试 Linux 自定义无边框。
-
-4. Cinnamon / muffin
-   Mint 相关，值得测试。
-
-5. KDE Plasma X11 / kwin_x11
-   用户多，但行为可能更复杂。
-```
-
-## 安装多个桌面环境
-
-在 Debian/Ubuntu 系虚拟机中可以安装多个桌面环境，然后在登录界面选择会话。
-
-```bash
-sudo apt update
-sudo apt install task-xfce-desktop
-sudo apt install task-cinnamon-desktop
-sudo apt install task-kde-desktop
-sudo apt install task-mate-desktop
-```
-
-安装后注销，不是切换用户。在登录界面选择当前用户后，点齿轮或 session 菜单，选择：
-
-```text
-GNOME
-GNOME on Xorg
-Xfce Session
-Cinnamon
-Plasma
-MATE
-```
-
-如果测试要求干净复现，最终最好单独准备虚拟机；快速测试阶段可以同一个虚拟机装多个桌面切换。
-
-## 测试命令
-
-普通运行并打印策略：
-
-```bash
-FRAMELESS_DEBUG_WINDOW_POLICY=1 python run.py
-```
-
-强制启用 Linux 自定义窗口测试：
-
-```bash
-FRAMELESS_FORCE_CUSTOM_CHROME=1 FRAMELESS_DEBUG_WINDOW_POLICY=1 python run.py
-```
-
-临时把某个 WM 当作白名单测试，不改代码：
-
-```bash
-FRAMELESS_LINUX_CUSTOM_CHROME_WM=xfwm4 FRAMELESS_DEBUG_WINDOW_POLICY=1 python run.py
-```
-
-多个 token：
-
-```bash
-FRAMELESS_LINUX_CUSTOM_CHROME_WM=xfwm4,muffin,kwin_x11 FRAMELESS_DEBUG_WINDOW_POLICY=1 python run.py
-```
-
-强制系统标题栏：
-
-```bash
-FRAMELESS_FORCE_SYSTEM_CHROME=1 FRAMELESS_DEBUG_WINDOW_POLICY=1 python run.py
-```
-
-## 需要记录的环境信息
-
-每个测试组合都记录：
-
-```bash
-echo $XDG_SESSION_TYPE
-echo $XDG_CURRENT_DESKTOP
-echo $XDG_SESSION_DESKTOP
-echo $DESKTOP_SESSION
-echo $WINDOW_MANAGER
-python - <<'PY'
-from app.window_policy import current_window_policy
-print(current_window_policy())
-PY
-```
-
-如果 `python - <<'PY'` 在当前 shell 不方便，可改用：
-
-```bash
-python -c "from app.window_policy import current_window_policy; print(current_window_policy())"
-```
-
-## 测试项目
-
-系统标题栏默认路径：
-
-- 能启动。
-- 主窗口能移动、缩放、最小化、最大化、关闭。
-- 软件自定义标题栏区域作为内容正常显示，不应出现自绘按钮和系统按钮冲突。
-- 切换主题不卡到不可接受。
-- 右键菜单、滚轮、输入框正常。
-
-强制 custom chrome 路径：
-
-- 主窗口是否能拖动。
-- 四边和四角是否能缩放。
-- 左上角缩放时内容是否跳动。
-- 贴边、最大化、复原是否符合当前桌面环境习惯。
-- 阴影是否跟随窗口，不应作为独立窗口乱飞或盖到前面。
-- Wayland 下如果出现透明度不支持、窗口位置不可控、阴影分离，直接记录为不适合 custom chrome。
-
-## 通过标准
-
-只有满足这些条件才加入白名单：
-
-- 启动稳定，无 QML/native 崩溃。
-- 拖动、缩放、最大化、复原稳定。
-- 阴影不乱飞、不抢焦点、不挡点击。
-- 不明显卡顿。
-- 多屏或缩放比例变化下没有明显窗口错位。
-
-如果只是不完美但可用，不建议加入默认白名单；保留为用户手动强制开启。
-
-## 修改白名单
-
-测试通过后修改：
-
-```text
-app/window_policy.py
-```
-
-例如 XFCE 通过：
-
-```python
-LINUX_CUSTOM_CHROME_WM_ALLOWLIST: set[str] = {"xfwm4"}
-```
-
-Cinnamon 也通过：
-
-```python
-LINUX_CUSTOM_CHROME_WM_ALLOWLIST: set[str] = {"xfwm4", "muffin"}
-```
-
-KDE X11 通过后再加：
-
-```python
-LINUX_CUSTOM_CHROME_WM_ALLOWLIST: set[str] = {"xfwm4", "muffin", "kwin_x11"}
-```
-
-注意：不要因为某个发行版通过就加发行版名。这里判断的是窗口管理器/桌面环境，不是 Debian、Ubuntu、Mint 本身。
-
-## 编译 Linux native 模块
+需要。Windows 现在的预编译 native 模块不能直接给 Linux 用。
 
 Linux native 编译入口：
 
@@ -210,18 +25,142 @@ bash scripts/build_linux.sh
 FRAMELESS_QT_PREFIX=/opt/Qt/6.11.1/gcc_64 bash scripts/build_linux.sh
 ```
 
-预期输出目录和 Windows 同级：
+期望输出目录：
 
 ```text
 app/native/prebuilt/linux-x64-py310-qt6.11-system/qml/FramelessNative
 app/native/prebuilt/linux-x64-py310-qt6.11-custom/qml/FramelessNative
 ```
 
-当前仓库只有 Windows 预编译模块时，Linux 会回退到 QML/Python 路径。Linux custom chrome 要做严肃测试，建议先编译对应 Linux native 模块。
+编译后先跑：
 
-## 不要动的东西
+```bash
+python scripts/check_native_window_integrity.py --require-prebuilt --summary
+```
 
-除非明确要修 Windows，否则 Linux 测试过程中不要改这些稳定路径：
+如果只在 Linux 上调试 custom chrome，建议先强制启用测试，不要直接加入默认白名单：
+
+```bash
+FRAMELESS_FORCE_CUSTOM_CHROME=1 FRAMELESS_DEBUG_WINDOW_POLICY=1 python run.py
+```
+
+## Linux 内存显示口径
+
+`app/memory_snapshot.py` 现在在 Linux 下优先读取 `/proc/self/smaps_rollup`：
+
+- `rss`：进程驻留内存。
+- `uss`：Unique Set Size，私有驻留内存，更接近“这个进程独占用了多少物理内存”。
+- `pss`：Proportional Set Size，共享页按比例折算。
+- `private`：Linux 下映射为 USS。
+- `ws_private`：为了复用 Windows UI 字段，Linux 下也映射为 USS。
+
+也就是说，更新页里显示的“当前私有驻留内存”在 Linux 上应理解为 USS。它不是 Windows 的 Working Set - Private，但用户感知上最接近。
+
+Linux 运行前 `run.py` 会调用：
+
+```python
+configure_process_allocator()
+```
+
+Linux 侧会设置：
+
+```text
+QT_QUICK_BACKEND=software
+mallopt(M_TRIM_THRESHOLD)
+mallopt(M_MMAP_THRESHOLD)
+mallopt(M_ARENA_MAX=2)
+```
+
+这条线是为了让 Linux 内存更容易回落，不要轻易删除。若要对比硬件渲染，需要单独记录内存和滚动/缩放流畅度。
+
+## 当前 Linux 阴影遗留问题
+
+之前 Linux 自定义阴影还残留这些问题：
+
+1. 缩放左上角窗口时，窗口底部和右侧的阴影会抖动。
+2. 阴影虽然在本软件窗口下面，但会被其他系统级窗口盖住。
+3. 窗口移出屏幕外时，阴影被限制在屏幕内，不能跟随主窗口一起越界。
+
+这些问题更像 Linux 外置阴影窗口的窗口管理器层级/约束问题，不是 QML 内容层问题。建议在 Linux 系统上修，不建议在 Windows 机器上盲改。
+
+优先排查方向：
+
+- X11 下检查 shadow helper 窗口是否设置为合适的 transient/override-redirect/type hint。
+- 阴影窗口不要设置会被 WM 限制在 workarea 内的普通顶层窗口属性。
+- 阴影应跟随目标窗口 frame geometry，而不是 client geometry。
+- 缩放过程中不要靠 QML timer 追位置；优先接 native configure/geometry 事件。
+- Wayland 下外置阴影窗口位置和层级通常不可可靠控制，若复现上述问题，建议该会话直接禁用 custom external shadow，回退系统窗口/系统阴影。
+
+## 测试环境记录
+
+每个 Linux 桌面都记录：
+
+```bash
+echo $XDG_SESSION_TYPE
+echo $XDG_CURRENT_DESKTOP
+echo $XDG_SESSION_DESKTOP
+echo $DESKTOP_SESSION
+echo $WINDOW_MANAGER
+python -c "from app.window_policy import current_window_policy; print(current_window_policy())"
+```
+
+建议测试顺序：
+
+1. GNOME Wayland：预期保守走系统窗口，不建议 custom external shadow。
+2. GNOME on Xorg：可强制 custom 做对比，但不要默认启用。
+3. XFCE / xfwm4：最适合优先验证 Linux custom chrome。
+4. Cinnamon / muffin：可测。
+5. KDE Plasma X11 / kwin_x11：用户多，但窗口规则复杂，必须单独验证。
+
+## 白名单策略
+
+默认白名单仍为空：
+
+```python
+LINUX_CUSTOM_CHROME_WM_ALLOWLIST: set[str] = set()
+```
+
+只在某个窗口管理器完整通过后再加入，例如：
+
+```python
+LINUX_CUSTOM_CHROME_WM_ALLOWLIST: set[str] = {"xfwm4"}
+```
+
+不要按发行版加白名单。判断对象应该是窗口管理器/会话类型，不是 Ubuntu、Debian、Mint。
+
+## 必测项目
+
+系统窗口默认路径：
+
+- 主窗口启动、移动、缩放、最小化、最大化、关闭正常。
+- 自绘标题栏内容不和系统标题栏按钮冲突。
+- 主题切换不卡到不可接受。
+- 右键菜单、滚动、输入框、任务列表正常。
+
+强制 custom chrome 路径：
+
+- 四边和四角缩放命中区正确。
+- 左上角缩放时右侧/底部边界不漏底、不反复抖。
+- 阴影跟随窗口，不抢焦点、不挡点击、不乱飞。
+- 最大化、半屏、恢复符合当前桌面环境习惯。
+- 窗口移出屏幕时，阴影和主窗口一致，不被强行裁在屏幕内。
+- 其他应用窗口覆盖时，阴影层级不应该跑到不合理的位置。
+
+## 通过标准
+
+只有满足这些条件才建议默认启用 Linux custom chrome：
+
+- 启动稳定，无 QML/native 崩溃。
+- 移动、缩放、最大化、恢复稳定。
+- 阴影不乱飞、不抢焦点、不挡点击。
+- 左上角缩放时阴影和窗口边界可接受。
+- 多屏、不同缩放比例下无明显错位。
+
+如果只是“能用但不完美”，不要加入默认白名单，保留为环境变量强制启用。
+
+## 不要动的 Windows 稳定路径
+
+Linux 调试时不要顺手改这些 Windows 稳定文件，除非明确要修 Windows：
 
 ```text
 app/windows_host.py
@@ -231,10 +170,21 @@ app/native/prebuilt/win32-x64-py310-qt6.11-custom
 app/native/prebuilt/win32-x64-py310-qt6.11-system
 ```
 
-Windows 当前行为、阴影和打包产物已经验证过，Linux 改动应尽量集中在：
+Linux 优先改动范围：
 
 ```text
 app/window_policy.py
 scripts/build_linux.sh
-Linux native prebuilt 输出目录
+app/cpp/frameless_native/src/linux 或跨平台但经 Linux 实测确认的 native 代码
+app/native/prebuilt/linux-x64-py310-qt6.11-*
 ```
+
+## 优化理念交接
+
+- 不要用高频 timer 追窗口或阴影位置。
+- 不要为了阴影修复去破坏主窗口内容层。
+- Linux 下能用系统窗口行为就优先系统窗口行为。
+- 外置阴影必须跟随 native geometry 事件，不能依赖 QML 下一帧。
+- 内存显示优先看 USS；RSS 会包含共享库和 Qt 显存相关驻留，不能直接和 Windows Working Set - Private 等价。
+- 列表大数据继续使用模型虚拟化，不要用 Repeater 展开大量条目。
+- 视觉优化和内存优化要保留可回退开关，避免低内存策略影响默认视觉效果。

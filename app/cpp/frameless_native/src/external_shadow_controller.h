@@ -65,6 +65,7 @@ private:
         qreal openingOpacityScale = 1.0;
         bool hidingFadeScheduled = false;
         qreal hidingOpacityScale = 1.0;
+        bool hiddenForMinimize = false;
     };
 
     static QWindow *asWindow(QObject *object);
@@ -82,6 +83,7 @@ private:
     void syncNativeRegisteredShadow(WId targetId, bool stackBehind, bool forceRepaint = false);
     void syncNativeRegisteredShadow(WId targetId, const QRect &targetRect, bool stackBehind, bool forceRepaint);
     void hideNativeShadow(NativeShadowState &state);
+    void hideNativeShadowForMinimize(NativeShadowState &state);
     void destroyNativeShadowState(NativeShadowState &state);
     bool ensureNativeShadowWindow(NativeShadowState &state);
     bool loadNativeShadowAsset(NativeShadowState &state, const QUrl &assetUrl);

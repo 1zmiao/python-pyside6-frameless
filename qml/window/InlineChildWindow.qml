@@ -7,6 +7,8 @@ Item {
 
     property var manager: null
     property string pageKey: ""
+    property int taskId: -1
+    property string taskType: "default"
     property string title: "Child"
     property string pageSource: ""
     property bool minimized: false
@@ -48,6 +50,17 @@ Item {
     width: Core.Theme.dp(640)
     height: Core.Theme.dp(440)
     visible: true
+
+    function applyTaskPropsToContent() {
+        const item = contentLoader.item
+        if (item && item.taskId !== undefined)
+            item.taskId = root.taskId
+        if (item && item.taskType !== undefined)
+            item.taskType = root.taskType
+    }
+
+    onTaskIdChanged: applyTaskPropsToContent()
+    onTaskTypeChanged: applyTaskPropsToContent()
 
     function clampGeometry() {
         if (!parent)
@@ -544,12 +557,13 @@ Item {
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.bottom: parent.bottom
-        anchors.margins: Core.Theme.dp(10)
-        anchors.topMargin: Core.Theme.metrics.titleBarHeight + Core.Theme.dp(10)
+        anchors.margins: 0
+        anchors.topMargin: Core.Theme.metrics.titleBarHeight
         active: root.contentActive
         asynchronous: true
         source: root.pageSource
         visible: !root.minimized && active
+        onLoaded: root.applyTaskPropsToContent()
     }
 
     MouseArea {
